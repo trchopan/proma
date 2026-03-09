@@ -175,7 +175,7 @@ test("generateDigestItems passes strict structured output format", async () => {
       .join("\n") ?? "";
 
   expect(promptText).toContain("System digest in English");
-  expect(promptText).toContain("slack, wiki, git, figma");
+  expect(promptText).toContain("slack, wiki, git, figma, file");
   expect(promptText).toContain("Some input");
 });
 

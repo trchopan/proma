@@ -111,6 +111,7 @@ Each generated markdown file includes:
 - `## Timeline` (always present; use `- None` when no date context is available)
 - Timeline entries, when present, must use strict `YYYY-MM-DD - <context>` format
 - `## References` entries in `- <source>: <link>` format (for example `- slack: https://...`)
+- Allowed digest/reference sources: `slack`, `wiki`, `git`, `figma`, `file` (use `file` for document links such as Google Drive)
 
 Development commands:
 

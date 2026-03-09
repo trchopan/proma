@@ -11,7 +11,13 @@ export const DIGEST_CATEGORIES = [
   "discussion",
 ] as const;
 
-export const DIGEST_SOURCES = ["slack", "wiki", "git", "figma"] as const;
+export const DIGEST_SOURCES = [
+  "slack",
+  "wiki",
+  "git",
+  "figma",
+  "file",
+] as const;
 
 export type DigestCategory = (typeof DIGEST_CATEGORIES)[number];
 export type DigestSource = (typeof DIGEST_SOURCES)[number];
@@ -145,6 +151,7 @@ export const DIGEST_RESPONSE_SCHEMA = {
 } as const;
 
 const TIMELINE_ENTRY_PATTERN = /^\d{4}-\d{2}-\d{2}\s+-\s+.+$/;
+const ALLOWED_SOURCES_TEXT = DIGEST_SOURCES.join(", ");
 
 export const TOPIC_ROUTING_RESPONSE_SCHEMA = {
   type: "object",
@@ -200,7 +207,8 @@ function normalizeSource(input: unknown): DigestSource | null {
     value === "slack" ||
     value === "wiki" ||
     value === "git" ||
-    value === "figma"
+    value === "figma" ||
+    value === "file"
   ) {
     return value;
   }
@@ -262,7 +270,7 @@ function normalizeReferences(input: unknown): DigestReference[] {
 
     if (!source) {
       throw new Error(
-        "Digest item contained invalid reference source (expected one of: slack, wiki, git, figma)",
+        `Digest item contained invalid reference source (expected one of: ${ALLOWED_SOURCES_TEXT})`,
       );
     }
 
@@ -318,7 +326,7 @@ export function parseDigestItemsResponse(content: string): DigestItem[] {
 
     if (!source) {
       throw new Error(
-        "Digest item contained invalid source (expected one of: slack, wiki, git, figma)",
+        `Digest item contained invalid source (expected one of: ${ALLOWED_SOURCES_TEXT})`,
       );
     }
 
