@@ -88,7 +88,7 @@ Ticket Consolidation
 
 Process all ticket files in:
 
-docs/backlog/T*.md
+docs/tickets/T\*.md
 
 For each ticket extract:
 
@@ -107,30 +107,13 @@ Group entries logically by system area inferred from content.
 
 ---
 
-Specification State Section
-
-Add a final section:
-
-## Specification State At Release
-
-Briefly confirm:
-
-- `docs/spec/domain-model.md` aligns with implementation
-- `docs/spec/probability-engine.md` unchanged
-- recompute triggers match specification
-- tenant/authorization boundaries align with spec
-
-Keep concise and factual.
-
----
-
 Backlog Cleanup
 
 After generating the release record:
 
-- Delete all ticket files under `docs/backlog/T*.md`
-- Keep `docs/backlog/TEMPLATE.md` in place
-- Leave the backlog directory present
+- Delete all ticket files under `docs/tickets/T*.md`
+- Keep `docs/tickets/TEMPLATE.md` in place
+- Leave the tickets directory present
 - Do not create new backlog tickets
 
 List deleted files before committing.
@@ -166,7 +149,6 @@ Provide:
 
 1. Determined current version and computed <new_version>
 2. Full contents of docs/releases/<new_version>.md
-3. List of deleted backlog files
+3. List of deleted tickets files
 4. Exact git command sequence executed according to GIT_WORKFLOW.md
 5. PR title and body text
-

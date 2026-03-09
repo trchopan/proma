@@ -12,7 +12,7 @@ updated_at: ''
 parent: ''
 depends_on: []
 spec_refs:
-    - docs/spec/mvp.md
+    - ...
 ---
 
 # TXXX - Ticket title
