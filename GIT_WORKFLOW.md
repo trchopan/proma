@@ -105,7 +105,7 @@ Allowed changes on the release branch:
 - Create release record:
     - `docs/releases/v<major>.<minor>.<patch>.md`
 
-- Consolidate and delete completed backlog tickets from `docs/backlog/`
+- Consolidate and delete completed backlog tickets from `docs/tickets/`
 - Documentation-only adjustments related to the release
 
 Not allowed on the release branch:
@@ -163,11 +163,11 @@ Tags must be annotated.
 
 After each release:
 
-- All completed tickets in `docs/backlog/` are consolidated into:
+- All completed tickets in `docs/tickets/` are consolidated into:
     - `docs/releases/v<major>.<minor>.<patch>.md`
 
-- Ticket files are deleted from `docs/backlog/`
-- The backlog folder remains present but empty
+- Ticket files are deleted from `docs/tickets/` (except `TEMPLATE.md`)
+- The tickets folder remains present
 - The release record is frozen
 
 If corrections are required later, create:
