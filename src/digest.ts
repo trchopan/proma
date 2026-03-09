@@ -30,6 +30,18 @@ export type DigestGenerationOptions = {
   logger?: Logger;
 };
 
+export type DigestInputImage = {
+  url: string;
+  label: string;
+};
+
+export type DigestGenerationInput =
+  | string
+  | {
+      text: string;
+      images?: DigestInputImage[];
+    };
+
 export type TopicRoutingCandidate = {
   slug: string;
   topic: string;
@@ -312,10 +324,13 @@ export function renderDigestMarkdown(item: DigestItem): string {
 }
 
 export async function generateDigestItems(
-  inputText: string,
+  input: DigestGenerationInput,
   options: DigestGenerationOptions,
   chatCompletion: ChatCompletionFn = createChatCompletion,
 ): Promise<DigestItem[]> {
+  const inputText = typeof input === "string" ? input : input.text;
+  const images = typeof input === "string" ? [] : (input.images ?? []);
+
   const prompt = [
     "Split the user content into one or more digest items.",
     "Return concise and meaningful digest items based on intent.",
@@ -326,6 +341,19 @@ export async function generateDigestItems(
     "User content:",
     inputText,
   ].join("\n\n");
+
+  const userContent =
+    images.length === 0
+      ? prompt
+      : [
+          { type: "text" as const, text: prompt },
+          ...images.map((image) => ({
+            type: "image_url" as const,
+            image_url: {
+              url: image.url,
+            },
+          })),
+        ];
 
   const responseText = await chatCompletion({
     model: options.model,
@@ -339,7 +367,7 @@ export async function generateDigestItems(
       },
       {
         role: "user",
-        content: prompt,
+        content: userContent,
       },
     ],
     responseFormat: {

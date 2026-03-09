@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { mkdtemp } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 import {
   parseDigestCommandArgs,
@@ -281,4 +284,71 @@ test("renderDiffPreview reports no textual changes", () => {
   const preview = renderDiffPreview(content, content);
 
   expect(preview).toContain("No textual changes.");
+});
+
+test("runCli digest loads markdown images and skips invalid ones with warnings", async () => {
+  const output: string[] = [];
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "proma-digest-"));
+  const inputPath = path.join(tmpDir, "notes.md");
+  const imagePath = path.join(tmpDir, "image.png");
+
+  await Bun.write(imagePath, new Uint8Array([137, 80, 78, 71]));
+
+  const inputText = [
+    "This is a text file with an image.",
+    "",
+    "![Valid image](image.png)",
+    "![Missing image](missing.png)",
+    "![Unsupported image](vector.svg)",
+  ].join("\n");
+
+  let capturedInput: unknown;
+  const mockItems: DigestItem[] = [
+    {
+      category: "planning",
+      source: "wiki",
+      summary: "Plan sprint goals.",
+      keyPoints: ["Align scope"],
+      references: [],
+    },
+  ];
+
+  const exitCode = await runCli(
+    ["digest", "--input", inputPath, "--project", "apollo"],
+    {
+      readTextFile: async () => inputText,
+      generateDigestItems: async (input) => {
+        capturedInput = input;
+        return mockItems;
+      },
+      writeStageOneDigestItems: async () => [],
+    },
+    {
+      out: (message) => {
+        output.push(message);
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(output).toContain(
+    "Warning: Skipping image 'missing.png' (file not found).",
+  );
+  expect(output).toContain(
+    "Warning: Skipping image 'vector.svg' (unsupported type: .svg).",
+  );
+  expect(output).toContain("Loaded 1 image(s) from input markdown.");
+
+  expect(capturedInput).toEqual({
+    text: inputText,
+    images: [
+      {
+        label: "image.png",
+        url: expect.stringMatching(/^data:image\/png;base64,/),
+      },
+    ],
+  });
 });

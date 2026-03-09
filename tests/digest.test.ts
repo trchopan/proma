@@ -149,12 +149,87 @@ test("generateDigestItems passes strict structured output format", async () => {
   });
 
   const messages = capturedOptions?.messages as
-    | Array<{ role: string; content: string }>
+    | Array<{ role: string; content: string | unknown[] }>
     | undefined;
   const promptText =
-    messages?.map((message) => message.content).join("\n") ?? "";
+    messages
+      ?.map((message) =>
+        typeof message.content === "string"
+          ? message.content
+          : JSON.stringify(message.content),
+      )
+      .join("\n") ?? "";
 
   expect(promptText).toContain("in English");
+});
+
+test("generateDigestItems includes image parts for multimodal prompt", async () => {
+  let capturedOptions:
+    | {
+        messages?: unknown;
+      }
+    | undefined;
+
+  await generateDigestItems(
+    {
+      text: "Here is the note content",
+      images: [
+        {
+          label: "image.png",
+          url: "data:image/png;base64,abc123",
+        },
+      ],
+    },
+    { model: "gpt-4o-mini" },
+    async (options) => {
+      capturedOptions = {
+        messages: options.messages,
+      };
+      return JSON.stringify({
+        items: [
+          {
+            category: "planning",
+            source: "wiki",
+            summary: "Summary",
+            keyPoints: [],
+            references: [],
+          },
+        ],
+      });
+    },
+  );
+
+  const userMessage = (
+    capturedOptions?.messages as
+      | Array<{
+          role: string;
+          content:
+            | string
+            | Array<
+                | { type: "text"; text: string }
+                | { type: "image_url"; image_url: { url: string } }
+              >;
+        }>
+      | undefined
+  )?.find((message) => message.role === "user");
+
+  expect(Array.isArray(userMessage?.content)).toBe(true);
+  const contentParts = userMessage?.content as
+    | Array<
+        | { type: "text"; text: string }
+        | { type: "image_url"; image_url: { url: string } }
+      >
+    | undefined;
+  expect(contentParts?.[0]).toEqual({
+    type: "text",
+    text: expect.stringContaining("User content:"),
+  });
+  expect(contentParts?.[1]).toEqual({
+    type: "image_url",
+    image_url: {
+      url: "data:image/png;base64,abc123",
+    },
+  });
 });
 
 test("parseTopicRoutingResponse rejects unknown slug for update target", () => {

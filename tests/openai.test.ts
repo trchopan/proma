@@ -55,6 +55,58 @@ test("createChatCompletion sends response_format payload", async () => {
   expect(capturedBody?.response_format).toEqual(responseFormat);
 });
 
+test("createChatCompletion forwards multimodal message content", async () => {
+  process.env.OPENAI_API_KEY = "test-key";
+
+  let capturedBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (async (
+    _input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    if (!init?.body || typeof init.body !== "string") {
+      throw new Error("Expected request body");
+    }
+
+    capturedBody = JSON.parse(init.body) as Record<string, unknown>;
+
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: "ok" } }],
+      }),
+      { status: 200 },
+    );
+  }) as unknown as typeof fetch;
+
+  await createChatCompletion({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Check this" },
+          {
+            type: "image_url",
+            image_url: { url: "data:image/png;base64,abc" },
+          },
+        ],
+      },
+    ],
+  });
+
+  expect(capturedBody?.messages).toEqual([
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "Check this" },
+        {
+          type: "image_url",
+          image_url: { url: "data:image/png;base64,abc" },
+        },
+      ],
+    },
+  ]);
+});
+
 test("createChatCompletion fails fast for unsupported json_schema models", async () => {
   process.env.OPENAI_API_KEY = "test-key";
 

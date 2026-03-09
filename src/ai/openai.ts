@@ -1,7 +1,19 @@
 export type ChatMessage = {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: string | ChatMessageContentPart[];
 };
+
+export type ChatMessageContentPart =
+  | {
+      type: "text";
+      text: string;
+    }
+  | {
+      type: "image_url";
+      image_url: {
+        url: string;
+      };
+    };
 
 export type ChatCompletionOptions = {
   model: string;
@@ -56,6 +68,28 @@ type OpenAiResponse = {
 
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com";
 
+function formatMessageContentForLogging(
+  content: ChatMessage["content"],
+): string {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  return content
+    .map((part) => {
+      if (part.type === "text") {
+        return `text: ${part.text}`;
+      }
+
+      const url = part.image_url.url;
+      const redactedUrl = url.startsWith("data:")
+        ? `${url.slice(0, 48)}...<truncated>`
+        : url;
+      return `image_url: ${redactedUrl}`;
+    })
+    .join("\n");
+}
+
 function resolveChatCompletionsUrl(): string {
   const configuredBaseUrl = process.env.OPENAI_BASE_URL?.trim();
 
@@ -97,7 +131,10 @@ export async function createChatCompletion(
       responseFormatType: options.responseFormat?.type ?? null,
       prompt: options.logger?.verbose
         ? options.messages
-            .map((message) => `${message.role}: ${message.content}`)
+            .map(
+              (message) =>
+                `${message.role}: ${formatMessageContentForLogging(message.content)}`,
+            )
             .join("\n\n")
         : undefined,
     },

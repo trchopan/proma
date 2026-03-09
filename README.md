@@ -17,6 +17,8 @@ bun run index.ts
 The `digest` command reads an input text file, asks OpenAI to split/classify it into digest items, and writes stage-1 note files.
 The `merge` command then processes pending stage-1 notes into topic files.
 Digest summaries and key points are always generated in English, even when input notes are in another language.
+Digest input also supports markdown images (`![alt](./image.png)`), which are loaded and included in the AI prompt.
+Missing or unsupported local images are skipped with a warning, and digest generation continues.
 
 Required environment variable:
 
