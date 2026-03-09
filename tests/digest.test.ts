@@ -118,6 +118,7 @@ test("generateDigestItems passes strict structured output format", async () => {
 
   let capturedOptions:
     | {
+        messages?: unknown;
         responseFormat?: unknown;
       }
     | undefined;
@@ -127,6 +128,7 @@ test("generateDigestItems passes strict structured output format", async () => {
     { model: "gpt-4o-mini" },
     async (options) => {
       capturedOptions = {
+        messages: options.messages,
         responseFormat: options.responseFormat,
       };
       return JSON.stringify(output);
@@ -142,4 +144,12 @@ test("generateDigestItems passes strict structured output format", async () => {
       schema: DIGEST_RESPONSE_SCHEMA,
     },
   });
+
+  const messages = capturedOptions?.messages as
+    | Array<{ role: string; content: string }>
+    | undefined;
+  const promptText =
+    messages?.map((message) => message.content).join("\n") ?? "";
+
+  expect(promptText).toContain("in English");
 });

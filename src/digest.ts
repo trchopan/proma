@@ -36,6 +36,8 @@ export const DIGEST_RESPONSE_SCHEMA = {
   properties: {
     items: {
       type: "array",
+      description:
+        "Digest items generated from user notes. All textual fields must be in English.",
       items: {
         type: "object",
         additionalProperties: false,
@@ -50,9 +52,13 @@ export const DIGEST_RESPONSE_SCHEMA = {
           },
           summary: {
             type: "string",
+            description:
+              "Concise English summary of the item, regardless of input language.",
           },
           keyPoints: {
             type: "array",
+            description:
+              "Key points written in English, even when source notes are not in English.",
             items: {
               type: "string",
             },
@@ -263,6 +269,7 @@ export async function generateDigestItems(
     "Split the user content into one or more digest items.",
     "Return concise and meaningful digest items based on intent.",
     "Prefer fewer, meaningful digest items and avoid over-fragmenting.",
+    "Always write summary and keyPoints in English, even if the user content is in another language.",
     "Each item must include a source value from: slack, wiki, git, figma.",
     "If references are unknown, return an empty array.",
     "User content:",
@@ -276,7 +283,7 @@ export async function generateDigestItems(
       {
         role: "system",
         content:
-          "You classify notes into digest items and must satisfy the provided response schema.",
+          "You classify notes into digest items and must satisfy the provided response schema. Output all human-readable text in English.",
       },
       {
         role: "user",

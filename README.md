@@ -15,6 +15,7 @@ bun run index.ts
 ## Digest CLI feature
 
 The `digest` command reads an input text file, asks OpenAI to split/classify it into digest items, and writes markdown files by category.
+Digest summaries and key points are always generated in English, even when input notes are in another language.
 
 Required environment variable:
 
