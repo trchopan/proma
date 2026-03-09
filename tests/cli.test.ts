@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import {
   parseDigestCommandArgs,
   parseMergeCommandArgs,
+  renderDiffPreview,
   runCli,
 } from "../src/cli";
 import type { DigestItem } from "../src/digest";
@@ -211,4 +212,44 @@ test("runCli merge processes pending staged notes", async () => {
   expect(mergedStageNotes).toEqual([
     "/tmp/apollo/notes/planning_2026-03-09_1.md",
   ]);
+});
+
+test("renderDiffPreview renders unified hunks and change counts", () => {
+  const current = [
+    "---",
+    'topic: "Sprint Goals"',
+    "---",
+    "## Summary",
+    "Plan sprint goals.",
+    "## Key Points",
+    "- Align scope",
+  ].join("\n");
+  const proposed = [
+    "---",
+    'topic: "Sprint Goals"',
+    "---",
+    "## Summary",
+    "Plan sprint goals with staffing detail.",
+    "## Key Points",
+    "- Align scope",
+    "- Confirm owners",
+  ].join("\n");
+
+  const preview = renderDiffPreview(current, proposed);
+
+  expect(preview).toContain("--- current");
+  expect(preview).toContain("+++ proposed");
+  expect(preview).toContain("Changes: +2 -1");
+  expect(preview).toContain("@@ -2,6 +2,7 @@");
+  expect(preview).toContain("- Plan sprint goals.");
+  expect(preview).toContain("+ Plan sprint goals with staffing detail.");
+  expect(preview).toContain("+ - Confirm owners");
+});
+
+test("renderDiffPreview reports no textual changes", () => {
+  const content = ["## Summary", "Same text"].join("\n");
+
+  const preview = renderDiffPreview(content, content);
+
+  expect(preview).toContain("No textual changes.");
 });
