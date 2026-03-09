@@ -1,3 +1,6 @@
+# Temporary folder
+tmp
+
 # dependencies (bun install)
 node_modules
 

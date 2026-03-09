@@ -4,7 +4,7 @@ objective: 'Short verb phrase describing the outcome'
 type: general
 area: ui
 surface: ''
-priority: P2
+priority: P0|P1|P2 (lower is higher priority)
 status: pending
 branch: ''
 base_branch: develop
