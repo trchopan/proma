@@ -3,7 +3,9 @@ import readline from "node:readline/promises";
 
 import { generateDigestItems, generateTopicTargets } from "./digest";
 import {
+  listPendingStageOneDigestItems,
   listTopicCandidates,
+  markStageOneDigestItemMerged,
   prepareTopicMerge,
   writePreparedTopicMerge,
   writeStageOneDigestItems,
@@ -13,6 +15,8 @@ type CliDependencies = {
   generateDigestItems: typeof generateDigestItems;
   generateTopicTargets: typeof generateTopicTargets;
   writeStageOneDigestItems: typeof writeStageOneDigestItems;
+  listPendingStageOneDigestItems: typeof listPendingStageOneDigestItems;
+  markStageOneDigestItemMerged: typeof markStageOneDigestItemMerged;
   listTopicCandidates: typeof listTopicCandidates;
   prepareTopicMerge: typeof prepareTopicMerge;
   writePreparedTopicMerge: typeof writePreparedTopicMerge;
@@ -31,6 +35,11 @@ type DigestArgs = {
   model: string;
 };
 
+type MergeArgs = {
+  project: string;
+  model: string;
+};
+
 const DEFAULT_MODEL = "gpt-5.2";
 
 function defaultReadTextFile(filePath: string): Promise<string> {
@@ -38,7 +47,11 @@ function defaultReadTextFile(filePath: string): Promise<string> {
 }
 
 function usage(): string {
-  return "Usage: bun run index.ts digest --input <file> --project <output-root> [--model <model>]";
+  return [
+    "Usage:",
+    "  bun run index.ts digest --input <file> --project <output-root> [--model <model>]",
+    "  bun run index.ts merge --project <output-root> [--model <model>]",
+  ].join("\n");
 }
 
 function renderDiffPreview(
@@ -76,7 +89,7 @@ async function defaultConfirmMerge(
   }
 }
 
-export function parseDigestCommandArgs(args: string[]): DigestArgs {
+function parseOptionValues(args: string[]): Map<string, string> {
   const values = new Map<string, string>();
 
   for (let i = 0; i < args.length; i += 1) {
@@ -94,6 +107,11 @@ export function parseDigestCommandArgs(args: string[]): DigestArgs {
     i += 1;
   }
 
+  return values;
+}
+
+export function parseDigestCommandArgs(args: string[]): DigestArgs {
+  const values = parseOptionValues(args);
   const input = values.get("--input");
   const project = values.get("--project");
   const model = values.get("--model") ?? DEFAULT_MODEL;
@@ -109,6 +127,18 @@ export function parseDigestCommandArgs(args: string[]): DigestArgs {
   return { input, project, model };
 }
 
+export function parseMergeCommandArgs(args: string[]): MergeArgs {
+  const values = parseOptionValues(args);
+  const project = values.get("--project");
+  const model = values.get("--model") ?? DEFAULT_MODEL;
+
+  if (!project) {
+    throw new Error("Missing required argument: --project");
+  }
+
+  return { project, model };
+}
+
 export async function runCli(
   argv: string[],
   dependencies: Partial<CliDependencies> = {},
@@ -118,6 +148,8 @@ export async function runCli(
     generateDigestItems,
     generateTopicTargets,
     writeStageOneDigestItems,
+    listPendingStageOneDigestItems,
+    markStageOneDigestItemMerged,
     listTopicCandidates,
     prepareTopicMerge,
     writePreparedTopicMerge,
@@ -131,34 +163,46 @@ export async function runCli(
     ...io,
   };
 
-  if (argv[0] !== "digest") {
-    terminal.err(`Unknown command: ${argv[0] ?? "(none)"}`);
+  const command = argv[0];
+  if (command !== "digest" && command !== "merge") {
+    terminal.err(`Unknown command: ${command ?? "(none)"}`);
     terminal.err(usage());
     return 1;
   }
 
   try {
-    const parsed = parseDigestCommandArgs(argv.slice(1));
-    const inputPath = path.resolve(parsed.input);
-    const projectRoot = path.resolve(parsed.project);
-    const inputText = await deps.readTextFile(inputPath);
-    const items = await deps.generateDigestItems(inputText, {
-      model: parsed.model,
-    });
-    const stagedItems = await deps.writeStageOneDigestItems({
-      projectRoot,
-      items,
-    });
+    if (command === "digest") {
+      const parsed = parseDigestCommandArgs(argv.slice(1));
+      const inputPath = path.resolve(parsed.input);
+      const projectRoot = path.resolve(parsed.project);
+      const inputText = await deps.readTextFile(inputPath);
+      const items = await deps.generateDigestItems(inputText, {
+        model: parsed.model,
+      });
+      const stagedItems = await deps.writeStageOneDigestItems({
+        projectRoot,
+        items,
+      });
 
-    terminal.out(`Wrote ${stagedItems.length} stage 1 digest file(s):`);
-    for (const stagedItem of stagedItems) {
-      terminal.out(`- ${stagedItem.absolutePath}`);
+      terminal.out(`Wrote ${stagedItems.length} stage 1 digest file(s):`);
+      for (const stagedItem of stagedItems) {
+        terminal.out(`- ${stagedItem.absolutePath}`);
+      }
+
+      return 0;
     }
+
+    const parsed = parseMergeCommandArgs(argv.slice(1));
+    const projectRoot = path.resolve(parsed.project);
+    const stagedItems = await deps.listPendingStageOneDigestItems(projectRoot);
+    terminal.out(`Found ${stagedItems.length} pending stage 1 digest file(s).`);
 
     const mergedFiles: string[] = [];
     const skippedFiles: string[] = [];
+    let completedStagedItems = 0;
 
     for (const stagedItem of stagedItems) {
+      let hasSkippedMerge = false;
       const candidates = await deps.listTopicCandidates(
         projectRoot,
         stagedItem.item.category,
@@ -191,6 +235,7 @@ export async function runCli(
         const approved = await deps.confirmMerge(plan.targetPath, preview);
 
         if (!approved) {
+          hasSkippedMerge = true;
           skippedFiles.push(plan.targetPath);
           terminal.out(`Skipped merge: ${plan.targetPath}`);
           continue;
@@ -200,12 +245,21 @@ export async function runCli(
         mergedFiles.push(plan.targetPath);
         terminal.out(`Merged into topic file: ${plan.targetPath}`);
       }
+
+      if (hasSkippedMerge) {
+        continue;
+      }
+
+      await deps.markStageOneDigestItemMerged(stagedItem.absolutePath);
+      completedStagedItems += 1;
+      terminal.out(`Marked staged note as merged: ${stagedItem.absolutePath}`);
     }
 
     terminal.out(`Confirmed ${mergedFiles.length} topic merge(s).`);
     if (skippedFiles.length > 0) {
       terminal.out(`Skipped ${skippedFiles.length} topic merge(s).`);
     }
+    terminal.out(`Marked ${completedStagedItems} staged note(s) as merged.`);
 
     return 0;
   } catch (error) {

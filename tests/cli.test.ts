@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 
-import { parseDigestCommandArgs, runCli } from "../src/cli";
+import {
+  parseDigestCommandArgs,
+  parseMergeCommandArgs,
+  runCli,
+} from "../src/cli";
 import type { DigestItem } from "../src/digest";
 
 test("parseDigestCommandArgs parses required and optional args", () => {
@@ -15,6 +19,20 @@ test("parseDigestCommandArgs parses required and optional args", () => {
 
   expect(parsed).toEqual({
     input: "notes.txt",
+    project: "apollo",
+    model: "gpt-4.1",
+  });
+});
+
+test("parseMergeCommandArgs parses required and optional args", () => {
+  const parsed = parseMergeCommandArgs([
+    "--project",
+    "apollo",
+    "--model",
+    "gpt-4.1",
+  ]);
+
+  expect(parsed).toEqual({
     project: "apollo",
     model: "gpt-4.1",
   });
@@ -60,7 +78,27 @@ test("runCli returns readable error for missing project arg", async () => {
   expect(errors.join("\n")).toContain("Missing required argument: --project");
 });
 
-test("runCli executes staged flow and writes confirmed merges", async () => {
+test("runCli merge returns readable error for missing project arg", async () => {
+  const errors: string[] = [];
+
+  const exitCode = await runCli(
+    ["merge"],
+    {},
+    {
+      out: () => {
+        return;
+      },
+      err: (message) => {
+        errors.push(message);
+      },
+    },
+  );
+
+  expect(exitCode).toBe(1);
+  expect(errors.join("\n")).toContain("Missing required argument: --project");
+});
+
+test("runCli digest writes stage 1 files only", async () => {
   const output: string[] = [];
   const mockItems: DigestItem[] = [
     {
@@ -71,8 +109,6 @@ test("runCli executes staged flow and writes confirmed merges", async () => {
       references: [],
     },
   ];
-
-  const writes: string[] = [];
 
   const exitCode = await runCli(
     ["digest", "--input", "./input.txt", "--project", "apollo"],
@@ -86,26 +122,11 @@ test("runCli executes staged flow and writes confirmed merges", async () => {
           relativePath: "notes/planning_2026-03-09_1.md",
         },
       ],
-      listTopicCandidates: async () => [],
-      generateTopicTargets: async () => [
-        {
-          action: "create_new",
-          shortDescription: "sprint-goals",
-          topic: "Sprint Goals",
-          tags: ["sprint"],
-        },
-      ],
-      prepareTopicMerge: async () => ({
-        targetPath: "/tmp/apollo/planning/sprint-goals.md",
-        relativeTargetPath: "planning/sprint-goals.md",
-        currentContent: "",
-        proposedContent: "next",
-        isNew: true,
-        hasChanges: true,
-      }),
-      confirmMerge: async () => true,
-      writePreparedTopicMerge: async (plan) => {
-        writes.push(plan.targetPath);
+      listPendingStageOneDigestItems: async () => {
+        throw new Error("listPendingStageOneDigestItems should not be called");
+      },
+      markStageOneDigestItemMerged: async () => {
+        throw new Error("markStageOneDigestItemMerged should not be called");
       },
     },
     {
@@ -119,15 +140,10 @@ test("runCli executes staged flow and writes confirmed merges", async () => {
   );
 
   expect(exitCode).toBe(0);
-  expect(writes).toEqual(["/tmp/apollo/planning/sprint-goals.md"]);
   expect(output).toContain("Wrote 1 stage 1 digest file(s):");
-  expect(output).toContain(
-    "Merged into topic file: /tmp/apollo/planning/sprint-goals.md",
-  );
-  expect(output).toContain("Confirmed 1 topic merge(s).");
 });
 
-test("runCli skips confirmation when no topic change", async () => {
+test("runCli merge processes pending staged notes", async () => {
   const output: string[] = [];
   const mockItems: DigestItem[] = [
     {
@@ -139,18 +155,21 @@ test("runCli skips confirmation when no topic change", async () => {
     },
   ];
 
+  const mergedStageNotes: string[] = [];
+
   const exitCode = await runCli(
-    ["digest", "--input", "./input.txt", "--project", "apollo"],
+    ["merge", "--project", "apollo"],
     {
-      readTextFile: async () => "raw text",
-      generateDigestItems: async () => mockItems,
-      writeStageOneDigestItems: async () => [
+      listPendingStageOneDigestItems: async () => [
         {
           item: mockItems[0] as DigestItem,
           absolutePath: "/tmp/apollo/notes/planning_2026-03-09_1.md",
           relativePath: "notes/planning_2026-03-09_1.md",
         },
       ],
+      markStageOneDigestItemMerged: async (absolutePath) => {
+        mergedStageNotes.push(absolutePath);
+      },
       listTopicCandidates: async () => [],
       generateTopicTargets: async () => [
         {
@@ -171,9 +190,6 @@ test("runCli skips confirmation when no topic change", async () => {
       confirmMerge: async () => {
         throw new Error("confirmMerge should not be called for no-op merges");
       },
-      writePreparedTopicMerge: async () => {
-        throw new Error("writePreparedTopicMerge should not be called");
-      },
     },
     {
       out: (message) => {
@@ -186,8 +202,13 @@ test("runCli skips confirmation when no topic change", async () => {
   );
 
   expect(exitCode).toBe(0);
+  expect(output).toContain("Found 1 pending stage 1 digest file(s).");
   expect(output).toContain(
     "No topic change: /tmp/apollo/planning/sprint-goals.md",
   );
   expect(output).toContain("Confirmed 0 topic merge(s).");
+  expect(output).toContain("Marked 1 staged note(s) as merged.");
+  expect(mergedStageNotes).toEqual([
+    "/tmp/apollo/notes/planning_2026-03-09_1.md",
+  ]);
 });

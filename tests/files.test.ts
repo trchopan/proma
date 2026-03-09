@@ -6,7 +6,9 @@ import path from "node:path";
 import type { DigestItem, TopicRoutingTarget } from "../src/digest";
 import {
   allocateNextIndex,
+  listPendingStageOneDigestItems,
   listTopicCandidates,
+  markStageOneDigestItemMerged,
   prepareTopicMerge,
   slugifyTopic,
   writePreparedTopicMerge,
@@ -67,6 +69,75 @@ test("writeStageOneDigestItems writes to notes directory", async () => {
       path.join(dir, "notes", "research_2026-03-09_1.md"),
       path.join(dir, "notes", "research_2026-03-09_2.md"),
     ]);
+
+    const content = await Bun.file(written[0]?.absolutePath ?? "").text();
+    expect(content).toContain("---");
+    expect(content).toContain("category: research");
+    expect(content).toContain("source: slack");
+    expect(content).toContain("merged: false");
+  });
+});
+
+test("listPendingStageOneDigestItems returns only unmerged staged notes", async () => {
+  await withTempDir(async (dir) => {
+    const items: DigestItem[] = [
+      {
+        category: "planning",
+        source: "wiki",
+        summary: "Plan sprint goals.",
+        keyPoints: ["Align scope"],
+        references: [],
+      },
+      {
+        category: "discussion",
+        source: "slack",
+        summary: "Discuss rollout risks.",
+        keyPoints: ["Track mitigation"],
+        references: [],
+      },
+    ];
+
+    const written = await writeStageOneDigestItems({
+      projectRoot: dir,
+      items,
+      now: new Date("2026-03-09T10:00:00Z"),
+    });
+
+    await markStageOneDigestItemMerged(written[0]?.absolutePath ?? "");
+
+    const pending = await listPendingStageOneDigestItems(dir);
+
+    expect(pending.map((entry) => entry.relativePath)).toEqual([
+      "notes/discussion_2026-03-09_1.md",
+    ]);
+  });
+});
+
+test("listPendingStageOneDigestItems treats legacy notes as pending", async () => {
+  await withTempDir(async (dir) => {
+    const notesDir = path.join(dir, "notes");
+    await mkdir(notesDir, { recursive: true });
+
+    await Bun.write(
+      path.join(notesDir, "planning_2026-03-09_1.md"),
+      [
+        "## Summary",
+        "Legacy staged note",
+        "",
+        "## Key Points",
+        "- Keep compatibility",
+        "",
+        "## References",
+        "- None",
+        "",
+      ].join("\n"),
+    );
+
+    const pending = await listPendingStageOneDigestItems(dir);
+
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.item.category).toBe("planning");
+    expect(pending[0]?.item.source).toBe("wiki");
   });
 });
 

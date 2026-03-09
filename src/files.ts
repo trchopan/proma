@@ -3,10 +3,12 @@ import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  DIGEST_CATEGORIES,
   DIGEST_SOURCES,
   type DigestCategory,
   type DigestItem,
   type DigestSource,
+  renderDigestMarkdown,
   type TopicRoutingTarget,
 } from "./digest";
 
@@ -20,6 +22,12 @@ export type StagedDigestItem = {
   item: DigestItem;
   absolutePath: string;
   relativePath: string;
+};
+
+type StageOneFrontMatter = {
+  category: DigestCategory;
+  source: DigestSource;
+  merged: boolean;
 };
 
 export type TopicCandidate = {
@@ -118,29 +126,137 @@ function buildStageOneRelativePath(
   return path.join("notes", `${category}_${datePrefix}_${index}.md`);
 }
 
-function renderDigestMarkdown(item: DigestItem): string {
-  const keyPoints =
-    item.keyPoints.length > 0
-      ? item.keyPoints.map((value) => `- ${value}`).join("\n")
-      : "- None";
-  const references =
-    item.references.length > 0
-      ? item.references
-          .map((value) => `- ${value.source}: ${value.link}`)
-          .join("\n")
-      : "- None";
+function parseDigestCategory(input: string): DigestCategory | null {
+  const value = input.trim().toLowerCase();
+  return (DIGEST_CATEGORIES as readonly string[]).includes(value)
+    ? (value as DigestCategory)
+    : null;
+}
 
+function parseDigestSource(input: string): DigestSource | null {
+  const value = input.trim().toLowerCase();
+  return (DIGEST_SOURCES as readonly string[]).includes(value)
+    ? (value as DigestSource)
+    : null;
+}
+
+function inferCategoryFromStageFileName(
+  fileName: string,
+): DigestCategory | null {
+  const match = fileName.match(/^([a-z]+)_\d{4}-\d{2}-\d{2}_\d+\.md$/);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  return parseDigestCategory(match[1]);
+}
+
+function parseScalarFrontMatterEntries(
+  frontMatter: string,
+): Map<string, string> {
+  const values = new Map<string, string>();
+  const lines = frontMatter.split("\n");
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+
+    const match = line.match(/^([a-z_]+):\s*(.*)$/);
+    if (!match?.[1]) {
+      continue;
+    }
+
+    const key = match[1];
+    const value = (match[2] ?? "").trim().replace(/^['"]|['"]$/g, "");
+    values.set(key, value);
+  }
+
+  return values;
+}
+
+function parseStageOneFrontMatter(
+  markdown: string,
+  fileName: string,
+): StageOneFrontMatter | null {
+  const { frontMatter, body } = splitFrontMatter(markdown);
+  const entries = parseScalarFrontMatterEntries(frontMatter);
+  const canonical = extractCanonicalTopicData(body);
+
+  const frontMatterCategory = entries.get("category");
+  const category = frontMatterCategory
+    ? parseDigestCategory(frontMatterCategory)
+    : inferCategoryFromStageFileName(fileName);
+
+  if (!category) {
+    return null;
+  }
+
+  const frontMatterSource = entries.get("source");
+  const source = frontMatterSource
+    ? parseDigestSource(frontMatterSource)
+    : (canonical.references[0]?.source ?? "wiki");
+
+  if (!source) {
+    return null;
+  }
+
+  const mergedRaw = entries.get("merged");
+  const merged = mergedRaw ? mergedRaw.toLowerCase() === "true" : false;
+
+  return {
+    category,
+    source,
+    merged,
+  };
+}
+
+function renderStageOneFrontMatter(metadata: StageOneFrontMatter): string {
   return [
-    "## Summary",
-    item.summary,
-    "",
-    "## Key Points",
-    keyPoints,
-    "",
-    "## References",
-    references,
+    "---",
+    `category: ${metadata.category}`,
+    `source: ${metadata.source}`,
+    `merged: ${metadata.merged ? "true" : "false"}`,
+    "---",
     "",
   ].join("\n");
+}
+
+function renderStageOneDigestFile(item: DigestItem, merged: boolean): string {
+  return `${renderStageOneFrontMatter({
+    category: item.category,
+    source: item.source,
+    merged,
+  })}${renderDigestMarkdown(item)}`;
+}
+
+function parseStageOneDigestItem(
+  markdown: string,
+  fileName: string,
+): { item: DigestItem; merged: boolean } {
+  const frontMatter = parseStageOneFrontMatter(markdown, fileName);
+  const { body } = splitFrontMatter(markdown);
+  const canonical = extractCanonicalTopicData(body);
+
+  if (!frontMatter) {
+    throw new Error(`Unable to parse staged note metadata: ${fileName}`);
+  }
+
+  if (!canonical.summary) {
+    throw new Error(`Unable to parse staged note summary: ${fileName}`);
+  }
+
+  return {
+    item: {
+      category: frontMatter.category,
+      source: frontMatter.source,
+      summary: canonical.summary,
+      keyPoints: canonical.keyPoints,
+      references: canonical.references,
+    },
+    merged: frontMatter.merged,
+  };
 }
 
 export async function writeStageOneDigestItems(
@@ -165,7 +281,7 @@ export async function writeStageOneDigestItems(
       index,
     );
     const absolutePath = path.join(projectRoot, relativePath);
-    const markdown = renderDigestMarkdown(item);
+    const markdown = renderStageOneDigestFile(item, false);
 
     await Bun.write(absolutePath, markdown);
 
@@ -178,6 +294,58 @@ export async function writeStageOneDigestItems(
   }
 
   return stagedItems;
+}
+
+export async function listPendingStageOneDigestItems(
+  projectRoot: string,
+): Promise<StagedDigestItem[]> {
+  const notesDir = path.join(projectRoot, "notes");
+  let files: string[] = [];
+
+  try {
+    files = await readdir(notesDir);
+  } catch {
+    return [];
+  }
+
+  const pending: StagedDigestItem[] = [];
+
+  for (const fileName of files.sort()) {
+    if (!fileName.endsWith(".md")) {
+      continue;
+    }
+
+    const relativePath = path.join("notes", fileName);
+    const absolutePath = path.join(projectRoot, relativePath);
+    const markdown = await Bun.file(absolutePath).text();
+    const staged = parseStageOneDigestItem(markdown, fileName);
+
+    if (staged.merged) {
+      continue;
+    }
+
+    pending.push({
+      item: staged.item,
+      absolutePath,
+      relativePath,
+    });
+  }
+
+  return pending;
+}
+
+export async function markStageOneDigestItemMerged(
+  absolutePath: string,
+): Promise<void> {
+  const markdown = await Bun.file(absolutePath).text();
+  const fileName = path.basename(absolutePath);
+  const staged = parseStageOneDigestItem(markdown, fileName);
+
+  if (staged.merged) {
+    return;
+  }
+
+  await Bun.write(absolutePath, renderStageOneDigestFile(staged.item, true));
 }
 
 export function slugifyTopic(input: string): string {

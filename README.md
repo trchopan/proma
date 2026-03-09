@@ -14,7 +14,8 @@ bun run index.ts
 
 ## Digest CLI feature
 
-The `digest` command reads an input text file, asks OpenAI to split/classify it into digest items, then runs staged organization into topic files.
+The `digest` command reads an input text file, asks OpenAI to split/classify it into digest items, and writes stage-1 note files.
+The `merge` command then processes pending stage-1 notes into topic files.
 Digest summaries and key points are always generated in English, even when input notes are in another language.
 
 Required environment variable:
@@ -23,10 +24,16 @@ Required environment variable:
 export OPENAI_API_KEY="your_api_key"
 ```
 
-Run the command:
+Run stage 1 (`digest`):
 
 ```bash
 bun run index.ts digest --input ./notes.txt --project ./acme
+```
+
+Run stage 2/3 (`merge`):
+
+```bash
+bun run index.ts merge --project ./acme
 ```
 
 Optional model override:
@@ -40,7 +47,10 @@ Note: the digest flow uses OpenAI Structured Outputs (`json_schema`) and fails f
 `--project` is the root output directory. Output structure:
 
 - Stage 1 raw digests: `<project>/notes/<category>_<YYYY-MM-DD>_<index>.md`
-- Stage 2/3 topic files: `<project>/<category>/<topic-slug>.md`
+- Stage 2/3 topic files from `merge`: `<project>/<category>/<topic-slug>.md`
+
+Stage-1 files include YAML front matter with `category`, `source`, and `merged`.
+`merge` only picks files where `merged` is not `true`.
 
 Topic files include YAML front matter metadata (`topic`, `category`, `created_at`, `updated_at`, `tags`, `sources`, `source_refs`, `merged_digest_ids`).
 Tag metadata is normalized to lowercase kebab-case, deduplicated, and sorted.
