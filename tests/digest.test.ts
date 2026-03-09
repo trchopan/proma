@@ -128,7 +128,13 @@ test("generateDigestItems passes strict structured output format", async () => {
 
   const items = await generateDigestItems(
     "Some input",
-    { model: "gpt-4o-mini" },
+    {
+      model: "gpt-4o-mini",
+      promptTemplate: {
+        system: "System digest in English",
+        user: "Sources: {{ALLOWED_SOURCES}}\n\nBody:\n{{INPUT_TEXT}}",
+      },
+    },
     async (options) => {
       capturedOptions = {
         messages: options.messages,
@@ -160,7 +166,9 @@ test("generateDigestItems passes strict structured output format", async () => {
       )
       .join("\n") ?? "";
 
-  expect(promptText).toContain("in English");
+  expect(promptText).toContain("System digest in English");
+  expect(promptText).toContain("slack, wiki, git, figma");
+  expect(promptText).toContain("Some input");
 });
 
 test("generateDigestItems includes image parts for multimodal prompt", async () => {
@@ -280,7 +288,13 @@ test("generateTopicTargets passes candidate slugs and strict schema", async () =
         summary: "Release checklist",
       },
     ],
-    { model: "gpt-4o-mini" },
+    {
+      model: "gpt-4o-mini",
+      promptTemplate: {
+        system: "System routing in English",
+        user: "Item:\n{{DIGEST_ITEM_JSON}}\n\nCandidates:\n{{CANDIDATE_TOPIC_FILES}}",
+      },
+    },
     async (options) => {
       capturedOptions = {
         messages: options.messages,
@@ -324,5 +338,6 @@ test("generateTopicTargets passes candidate slugs and strict schema", async () =
   const promptText =
     messages?.map((message) => message.content).join("\n") ?? "";
 
+  expect(promptText).toContain("System routing in English");
   expect(promptText).toContain("release-readiness");
 });

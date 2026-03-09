@@ -20,6 +20,22 @@ Digest summaries and key points are always generated in English, even when input
 Digest input also supports markdown images (`![alt](./image.png)`), which are loaded and included in the AI prompt.
 Missing or unsupported local images are skipped with a warning, and digest generation continues.
 
+Prompt templates are loaded from committed markdown files:
+
+- `prompts/digest.md`
+- `prompts/merge.md`
+
+Template format:
+
+- `# {{SYSTEM}}` for the system prompt section
+- `# {{USER}}` for the user prompt section
+- `{{VARIABLE_NAME}}` placeholders for values injected at runtime
+
+Available placeholders:
+
+- `prompts/digest.md`: `{{INPUT_TEXT}}`, `{{ALLOWED_SOURCES}}`
+- `prompts/merge.md`: `{{DIGEST_ITEM_JSON}}`, `{{CANDIDATE_TOPIC_FILES}}`
+
 Required environment variable:
 
 ```bash

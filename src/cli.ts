@@ -15,6 +15,10 @@ import {
   writeStageOneDigestItems,
 } from "./files";
 import { createLogger, type Logger } from "./logging";
+import {
+  loadPromptTemplateFromFile,
+  resolveBuiltInPromptPath,
+} from "./prompt-template";
 
 type CliDependencies = {
   generateDigestItems: typeof generateDigestItems;
@@ -557,6 +561,9 @@ export async function runCli(
       const parsed = parseDigestCommandArgs(normalizedArgv.slice(1));
       const inputPath = path.resolve(parsed.input);
       const projectRoot = path.resolve(parsed.project);
+      const digestPromptTemplate = await loadPromptTemplateFromFile(
+        resolveBuiltInPromptPath("digest"),
+      );
       await logger.progress("digest.read_input", `Reading input: ${inputPath}`);
       const inputText = await deps.readTextFile(inputPath);
       await logger.debug("digest.input_loaded", "Loaded input text", {
@@ -590,6 +597,7 @@ export async function runCli(
         {
           model: parsed.model,
           logger,
+          promptTemplate: digestPromptTemplate,
         },
       );
       await logger.debug("digest.items_generated", "Generated digest items", {
@@ -622,6 +630,9 @@ export async function runCli(
 
     const parsed = parseMergeCommandArgs(normalizedArgv.slice(1));
     const projectRoot = path.resolve(parsed.project);
+    const mergePromptTemplate = await loadPromptTemplateFromFile(
+      resolveBuiltInPromptPath("merge"),
+    );
     await logger.progress(
       "merge.list_pending",
       "Scanning pending staged notes...",
@@ -656,6 +667,7 @@ export async function runCli(
         {
           model: parsed.model,
           logger,
+          promptTemplate: mergePromptTemplate,
         },
       );
       await logger.debug("merge.targets", "Generated topic routing targets", {
