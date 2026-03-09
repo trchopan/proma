@@ -1,3 +1,10 @@
+import { resolveOpenAiChatCompletionsUrl } from "../config";
+import {
+  MissingEnvError,
+  ModelRefusalError,
+  UnsupportedModelError,
+} from "../errors";
+
 export type ChatMessage = {
   role: "system" | "user" | "assistant";
   content: string | ChatMessageContentPart[];
@@ -66,8 +73,6 @@ type OpenAiResponse = {
   };
 };
 
-const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com";
-
 function formatMessageContentForLogging(
   content: ChatMessage["content"],
 ): string {
@@ -90,36 +95,16 @@ function formatMessageContentForLogging(
     .join("\n");
 }
 
-function resolveChatCompletionsUrl(): string {
-  const configuredBaseUrl = process.env.OPENAI_BASE_URL?.trim();
-
-  if (!configuredBaseUrl) {
-    return `${DEFAULT_OPENAI_BASE_URL}/v1/chat/completions`;
-  }
-
-  const normalizedBaseUrl = configuredBaseUrl.replace(/\/+$/, "");
-
-  if (normalizedBaseUrl.endsWith("/chat/completions")) {
-    return normalizedBaseUrl;
-  }
-
-  if (normalizedBaseUrl.endsWith("/v1")) {
-    return `${normalizedBaseUrl}/chat/completions`;
-  }
-
-  return `${normalizedBaseUrl}/v1/chat/completions`;
-}
-
 export async function createChatCompletion(
   options: ChatCompletionOptions,
 ): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
-    throw new Error("Missing OPENAI_API_KEY environment variable");
+    throw new MissingEnvError("OPENAI_API_KEY");
   }
 
-  const endpoint = resolveChatCompletionsUrl();
+  const endpoint = resolveOpenAiChatCompletionsUrl();
   const startedAt = Date.now();
   await options.logger?.debug(
     "ai.request.start",
@@ -179,9 +164,7 @@ export async function createChatCompletion(
       options.responseFormat?.type === "json_schema" &&
       /not supported|unsupported/i.test(message)
     ) {
-      throw new Error(
-        "Selected model does not support Structured Outputs (json_schema). Choose a compatible model.",
-      );
+      throw new UnsupportedModelError();
     }
 
     throw new Error(message);
@@ -189,7 +172,7 @@ export async function createChatCompletion(
 
   const refusal = rawPayload?.choices?.[0]?.message?.refusal;
   if (typeof refusal === "string" && refusal.trim().length > 0) {
-    throw new Error(`Model refused structured output: ${refusal.trim()}`);
+    throw new ModelRefusalError(refusal);
   }
 
   const content = rawPayload?.choices?.[0]?.message?.content;
