@@ -1,0 +1,4 @@
+12:52:45.601 [debug] sent notification server -> client window/logMessage
+12:52:45.602 [debug] handled request client -> server textDocument/documentSymbol in 1ms
+12:52:48.400 [debug] sent notification server -> client window/logMessage
+12:52:48.400 [debug] handled request client -> server textDocument/documentSymbol in 395µs

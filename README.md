@@ -12,6 +12,40 @@ To run:
 bun run index.ts
 ```
 
+## Digest CLI feature
+
+The `digest` command reads an input text file, asks OpenAI to split/classify it into digest items, and writes markdown files by category.
+
+Required environment variable:
+
+```bash
+export OPENAI_API_KEY="your_api_key"
+```
+
+Run the command:
+
+```bash
+bun run index.ts digest --input ./notes.txt --project ./acme
+```
+
+Optional model override:
+
+```bash
+bun run index.ts digest --input ./notes.txt --project ./acme --model gpt-4.1-mini
+```
+
+`--project` is the root output directory. Output structure:
+
+- `<project>/planning/<YYYY-MM-DD>_<index>.md`
+- `<project>/research/<YYYY-MM-DD>_<index>.md`
+- `<project>/discussion/<YYYY-MM-DD>_<index>.md`
+
+Each generated markdown file includes:
+
+- `## Summary`
+- `## Key Points`
+- `## References`
+
 Development commands:
 
 ```bash
