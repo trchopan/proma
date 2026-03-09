@@ -182,7 +182,6 @@ export function buildTopicMergeContent(options: {
     ),
   ]);
   const digestId = computeDigestIdentity(options.item);
-  const isLegacyAppendFormat = parsed.body.includes("## Digest Entries");
   const hasDigestId = (parsed.metadata.merged_digest_ids ?? []).includes(
     digestId,
   );
@@ -192,7 +191,7 @@ export function buildTopicMergeContent(options: {
       existingRefKeys.includes(referenceKey),
     );
 
-  if (!isLegacyAppendFormat && (hasDigestId || hasAllReferences)) {
+  if (hasDigestId || hasAllReferences) {
     return {
       proposedContent: options.currentContent,
       hasChanges: false,

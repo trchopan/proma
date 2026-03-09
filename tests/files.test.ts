@@ -117,34 +117,6 @@ test("listPendingStageOneDigestItems returns only unmerged staged notes", async 
   });
 });
 
-test("listPendingStageOneDigestItems treats legacy notes as pending", async () => {
-  await withTempDir(async (dir) => {
-    const notesDir = path.join(dir, "notes");
-    await mkdir(notesDir, { recursive: true });
-
-    await Bun.write(
-      path.join(notesDir, "planning_2026-03-09_1.md"),
-      [
-        "## Summary",
-        "Legacy staged note",
-        "",
-        "## Key Points",
-        "- Keep compatibility",
-        "",
-        "## References",
-        "- None",
-        "",
-      ].join("\n"),
-    );
-
-    const pending = await listPendingStageOneDigestItems(dir);
-
-    expect(pending).toHaveLength(1);
-    expect(pending[0]?.item.category).toBe("planning");
-    expect(pending[0]?.item.source).toBe("wiki");
-  });
-});
-
 test("listTopicCandidates reads topic front matter", async () => {
   await withTempDir(async (dir) => {
     const topicDir = path.join(dir, "planning");
@@ -164,7 +136,8 @@ test("listTopicCandidates reads topic front matter", async () => {
         "  - git",
         "---",
         "",
-        "## Digest Entries",
+        "## Summary",
+        "Release readiness baseline.",
       ].join("\n"),
     );
 
@@ -175,7 +148,7 @@ test("listTopicCandidates reads topic front matter", async () => {
         slug: "release-readiness",
         topic: "Release Readiness",
         tags: ["qa", "release"],
-        summary: "Release Readiness",
+        summary: "Release readiness baseline.",
       },
     ]);
   });

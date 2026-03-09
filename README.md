@@ -99,7 +99,7 @@ Logging behavior:
 Implementation structure (refactor baseline):
 
 - `src/cli.ts` orchestrates commands, while `src/cli/` holds focused helpers for args, diff preview, and markdown image loading.
-- `src/files.ts` is a compatibility export surface for storage modules under `src/storage/`.
+- `src/files.ts` is a barrel export surface for storage modules under `src/storage/`.
 - Markdown parsing/rendering concerns live in `src/markdown/`.
 - Topic merge decision logic is isolated in `src/services/topic-merge.ts`.
 - Runtime defaults and endpoint resolution are centralized in `src/config.ts`.

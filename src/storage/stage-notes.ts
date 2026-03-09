@@ -97,29 +97,16 @@ function parseDigestSource(input: string): DigestSource | null {
     : null;
 }
 
-function inferCategoryFromStageFileName(
-  fileName: string,
-): DigestCategory | null {
-  const match = fileName.match(/^([a-z]+)_\d{4}-\d{2}-\d{2}_\d+\.md$/);
-  if (!match?.[1]) {
-    return null;
-  }
-
-  return parseDigestCategory(match[1]);
-}
-
 function parseStageOneFrontMatter(
   markdown: string,
-  fileName: string,
 ): StageOneFrontMatter | null {
-  const { frontMatter, body } = splitFrontMatter(markdown);
+  const { frontMatter } = splitFrontMatter(markdown);
   const entries = parseScalarFrontMatterEntries(frontMatter);
-  const canonical = extractCanonicalTopicData(body);
 
   const frontMatterCategory = entries.get("category");
   const category = frontMatterCategory
     ? parseDigestCategory(frontMatterCategory)
-    : inferCategoryFromStageFileName(fileName);
+    : null;
 
   if (!category) {
     return null;
@@ -128,14 +115,23 @@ function parseStageOneFrontMatter(
   const frontMatterSource = entries.get("source");
   const source = frontMatterSource
     ? parseDigestSource(frontMatterSource)
-    : (canonical.references[0]?.source ?? "wiki");
+    : null;
 
   if (!source) {
     return null;
   }
 
   const mergedRaw = entries.get("merged");
-  const merged = mergedRaw ? mergedRaw.toLowerCase() === "true" : false;
+  if (!mergedRaw) {
+    return null;
+  }
+
+  const mergedLower = mergedRaw.toLowerCase();
+  if (mergedLower !== "true" && mergedLower !== "false") {
+    return null;
+  }
+
+  const merged = mergedLower === "true";
 
   return {
     category,
@@ -167,7 +163,7 @@ function parseStageOneDigestItem(
   markdown: string,
   fileName: string,
 ): { item: DigestItem; merged: boolean } {
-  const frontMatter = parseStageOneFrontMatter(markdown, fileName);
+  const frontMatter = parseStageOneFrontMatter(markdown);
   const { body } = splitFrontMatter(markdown);
   const canonical = extractCanonicalTopicData(body);
 
