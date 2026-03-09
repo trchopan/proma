@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   parseDigestCommandArgs,
   parseMergeCommandArgs,
+  parseReportCommandArgs,
   renderDiffPreview,
   runCli,
 } from "../src/cli";
@@ -71,6 +72,40 @@ test("parseMergeCommandArgs parses --verbose flag", () => {
   });
 });
 
+test("parseReportCommandArgs parses required and repeatable args", () => {
+  const parsed = parseReportCommandArgs([
+    "--project",
+    "apollo",
+    "--period",
+    "weekly",
+    "--input",
+    "planning/release.md",
+    "--input",
+    "discussion/incident.md",
+    "--base",
+    "reports/2026-03-08_weekly.md",
+    "--base",
+    "reports/2026-03-01_weekly.md",
+    "--model",
+    "gpt-4.1",
+  ]);
+
+  expect(parsed).toEqual({
+    project: "apollo",
+    period: "weekly",
+    input: ["planning/release.md", "discussion/incident.md"],
+    base: ["reports/2026-03-08_weekly.md", "reports/2026-03-01_weekly.md"],
+    model: "gpt-4.1",
+    verbose: false,
+  });
+});
+
+test("parseReportCommandArgs rejects invalid period", () => {
+  expect(() =>
+    parseReportCommandArgs(["--project", "apollo", "--period", "quarterly"]),
+  ).toThrow("Invalid --period value");
+});
+
 test("runCli returns readable error for missing args", async () => {
   const errors: string[] = [];
 
@@ -129,6 +164,26 @@ test("runCli merge returns readable error for missing project arg", async () => 
 
   expect(exitCode).toBe(1);
   expect(errors.join("\n")).toContain("Missing required argument: --project");
+});
+
+test("runCli report returns readable error for missing period arg", async () => {
+  const errors: string[] = [];
+
+  const exitCode = await runCli(
+    ["report", "--project", "apollo"],
+    {},
+    {
+      out: () => {
+        return;
+      },
+      err: (message) => {
+        errors.push(message);
+      },
+    },
+  );
+
+  expect(exitCode).toBe(1);
+  expect(errors.join("\n")).toContain("Missing required argument: --period");
 });
 
 test("runCli digest writes stage 1 files only", async () => {
@@ -246,6 +301,71 @@ test("runCli merge processes pending staged notes", async () => {
   expect(mergedStageNotes).toEqual([
     "/tmp/apollo/notes/planning_2026-03-09_1.md",
   ]);
+});
+
+test("runCli report generates report and prints output path", async () => {
+  const output: string[] = [];
+
+  const exitCode = await runCli(
+    [
+      "report",
+      "--project",
+      "apollo",
+      "--period",
+      "weekly",
+      "--input",
+      "planning/release.md",
+      "--base",
+      "reports/2026-03-08_weekly.md",
+    ],
+    {
+      resolveReportInputFiles: async () => ["/tmp/apollo/planning/release.md"],
+      resolveBaseReportFiles: async () => [
+        "/tmp/apollo/reports/2026-03-08_weekly.md",
+      ],
+      loadReportContext: async () => ({
+        period: "weekly",
+        inputs: [
+          {
+            path: "planning/release.md",
+            category: "planning",
+            topic: "Release Readiness",
+            summary: "Summary",
+            keyPoints: ["Point"],
+            timeline: ["2026-03-09 - Update"],
+            references: [],
+          },
+        ],
+        baseReports: [],
+      }),
+      generateReport: async () => ({
+        title: "Weekly Report",
+        executiveSummary: "Team made progress.",
+        updatedInformation: ["Updated item"],
+        resolutions: ["Resolved item"],
+        nextSteps: ["Next item"],
+      }),
+      writeReportFile: async () => ({
+        absolutePath: "/tmp/apollo/reports/2026-03-09_weekly.md",
+        relativePath: "reports/2026-03-09_weekly.md",
+      }),
+    },
+    {
+      out: (message) => {
+        output.push(message);
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(output).toContain("Resolved 1 report input file(s).");
+  expect(output).toContain("Resolved 1 base report file(s).");
+  expect(output).toContain(
+    "Generated report: /tmp/apollo/reports/2026-03-09_weekly.md",
+  );
 });
 
 test("renderDiffPreview renders unified hunks and change counts", () => {

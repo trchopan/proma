@@ -8,10 +8,14 @@ import {
   allocateNextIndex,
   listPendingStageOneDigestItems,
   listTopicCandidates,
+  loadReportContext,
   markStageOneDigestItemMerged,
   prepareTopicMerge,
+  resolveBaseReportFiles,
+  resolveReportInputFiles,
   slugifyTopic,
   writePreparedTopicMerge,
+  writeReportFile,
   writeStageOneDigestItems,
 } from "../src/files";
 
@@ -189,8 +193,9 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
     expect(plan.proposedContent).toContain("## Key Points");
     expect(plan.proposedContent).toContain("## Timeline");
     expect(plan.proposedContent).toContain("## References");
-    expect(plan.proposedContent).toContain("source_refs:");
     expect(plan.proposedContent).toContain("merged_digest_ids:");
+    expect(plan.proposedContent).not.toContain("source_refs:");
+    expect(plan.proposedContent).not.toContain("merged_ingest_ids:");
     expect(plan.hasChanges).toBe(true);
 
     await writePreparedTopicMerge(plan);
@@ -290,4 +295,148 @@ test("prepareTopicMerge is idempotent for same reference", async () => {
 
 test("slugifyTopic normalizes to kebab-case", () => {
   expect(slugifyTopic("  Sprint Planning #2 ")).toBe("sprint-planning-2");
+});
+
+test("resolveReportInputFiles uses explicit --input values only", async () => {
+  await withTempDir(async (dir) => {
+    const planningFile = path.join(dir, "planning", "release.md");
+    await mkdir(path.dirname(planningFile), { recursive: true });
+    await Bun.write(planningFile, "# planning");
+
+    const resolved = await resolveReportInputFiles(dir, [planningFile]);
+    expect(resolved).toEqual([planningFile]);
+  });
+});
+
+test("resolveReportInputFiles falls back to planning/research/discussion", async () => {
+  await withTempDir(async (dir) => {
+    const planningFile = path.join(dir, "planning", "a.md");
+    const researchFile = path.join(dir, "research", "b.md");
+    const discussionFile = path.join(dir, "discussion", "c.md");
+
+    await mkdir(path.dirname(planningFile), { recursive: true });
+    await mkdir(path.dirname(researchFile), { recursive: true });
+    await mkdir(path.dirname(discussionFile), { recursive: true });
+    await Bun.write(planningFile, "# a");
+    await Bun.write(researchFile, "# b");
+    await Bun.write(discussionFile, "# c");
+
+    const resolved = await resolveReportInputFiles(dir, []);
+    expect(resolved).toEqual([planningFile, researchFile, discussionFile]);
+  });
+});
+
+test("resolveBaseReportFiles falls back to reports directory", async () => {
+  await withTempDir(async (dir) => {
+    const reportsDir = path.join(dir, "reports");
+    await mkdir(reportsDir, { recursive: true });
+    const reportA = path.join(reportsDir, "2026-03-01_weekly.md");
+    const reportB = path.join(reportsDir, "2026-03-08_weekly.md");
+    await Bun.write(reportA, "# A");
+    await Bun.write(reportB, "# B");
+
+    const resolved = await resolveBaseReportFiles(dir, []);
+    expect(resolved).toEqual([reportA, reportB]);
+  });
+});
+
+test("loadReportContext parses input and base report context", async () => {
+  await withTempDir(async (dir) => {
+    const inputPath = path.join(dir, "planning", "release.md");
+    const basePath = path.join(dir, "reports", "2026-03-08_weekly.md");
+    await mkdir(path.dirname(inputPath), { recursive: true });
+    await mkdir(path.dirname(basePath), { recursive: true });
+
+    await Bun.write(
+      inputPath,
+      [
+        "---",
+        "topic: 'Release Readiness'",
+        "category: planning",
+        "---",
+        "",
+        "## Summary",
+        "Release status update",
+        "",
+        "## Key Points",
+        "- QA signoff received",
+        "",
+        "## Timeline",
+        "- 2026-03-09 - QA signoff",
+        "",
+        "## References",
+        "- git: https://example.com/pr/1",
+      ].join("\n"),
+    );
+
+    await Bun.write(
+      basePath,
+      [
+        "---",
+        "period: weekly",
+        "generated_at: '2026-03-08T10:00:00.000Z'",
+        "---",
+        "",
+        "# Weekly Project Report",
+        "",
+        "Previous context",
+      ].join("\n"),
+    );
+
+    const context = await loadReportContext({
+      projectRoot: dir,
+      period: "weekly",
+      inputFiles: [inputPath],
+      baseFiles: [basePath],
+    });
+
+    expect(context.period).toBe("weekly");
+    expect(context.inputs).toEqual([
+      {
+        path: "planning/release.md",
+        category: "planning",
+        topic: "Release Readiness",
+        summary: "Release status update",
+        keyPoints: ["QA signoff received"],
+        timeline: ["2026-03-09 - QA signoff"],
+        references: ["git: https://example.com/pr/1"],
+      },
+    ]);
+    expect(context.baseReports[0]?.path).toBe("reports/2026-03-08_weekly.md");
+    expect(context.baseReports[0]?.period).toBe("weekly");
+    expect(context.baseReports[0]?.title).toBe("Weekly Project Report");
+  });
+});
+
+test("writeReportFile writes front matter and deterministic name", async () => {
+  await withTempDir(async (dir) => {
+    const first = await writeReportFile({
+      projectRoot: dir,
+      period: "weekly",
+      model: "gpt-5.2",
+      inputFiles: [path.join(dir, "planning", "release.md")],
+      baseFiles: [path.join(dir, "reports", "2026-03-01_weekly.md")],
+      markdown: "# Weekly Report\n",
+      now: new Date("2026-03-09T10:00:00.000Z"),
+    });
+
+    expect(first.relativePath).toBe("reports/2026-03-09_weekly.md");
+    const firstContent = await Bun.file(first.absolutePath).text();
+    expect(firstContent).toContain("period: weekly");
+    expect(firstContent).toContain("model: 'gpt-5.2'");
+    expect(firstContent).toContain("input_files:");
+    expect(firstContent).toContain("base_reports:");
+
+    const second = await writeReportFile({
+      projectRoot: dir,
+      period: "weekly",
+      model: "gpt-5.2",
+      inputFiles: [],
+      baseFiles: [],
+      markdown: "# Weekly Report 2\n",
+      now: new Date("2026-03-09T10:01:00.000Z"),
+    });
+
+    expect(second.relativePath).toBe("reports/2026-03-09_weekly_2.md");
+  });
 });

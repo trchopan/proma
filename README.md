@@ -24,6 +24,7 @@ Prompt templates are loaded from committed markdown files:
 
 - `prompts/digest.md`
 - `prompts/merge.md`
+- `prompts/report.md`
 
 Template format:
 
@@ -35,6 +36,7 @@ Available placeholders:
 
 - `prompts/digest.md`: `{{INPUT_TEXT}}`, `{{ALLOWED_SOURCES}}`
 - `prompts/merge.md`: `{{DIGEST_ITEM_JSON}}`, `{{CANDIDATE_TOPIC_FILES}}`
+- `prompts/report.md`: `{{PERIOD}}`, `{{INPUT_CONTEXT_JSON}}`, `{{BASE_REPORT_CONTEXT_JSON}}`
 
 Required environment variable:
 
@@ -66,6 +68,22 @@ Run stage 2/3 with verbose debugging logs:
 bun run index.ts merge --project ./acme --verbose
 ```
 
+Run report generation (`report`):
+
+```bash
+bun run index.ts report --project ./acme --period weekly
+```
+
+Run report generation with explicit topic inputs and base reports:
+
+```bash
+bun run index.ts report --project ./acme --period weekly \
+  --input ./acme/planning/release-readiness.md \
+  --input ./acme/discussion/incident-response.md \
+  --base ./acme/reports/2026-03-01_weekly.md \
+  --base ./acme/reports/2026-03-08_weekly.md
+```
+
 Optional model override:
 
 ```bash
@@ -78,11 +96,19 @@ Note: the digest flow uses OpenAI Structured Outputs (`json_schema`) and fails f
 
 - Stage 1 raw digests: `<project>/notes/<category>_<YYYY-MM-DD>_<index>.md`
 - Stage 2/3 topic files from `merge`: `<project>/<category>/<topic-slug>.md`
+- Reports: `<project>/reports/<YYYY-MM-DD>_<period>.md` (collision fallback: `_2`, `_3`, ...)
+
+Report file behavior:
+
+- `--period` is required and must be one of: `daily`, `weekly`, `bi-weekly`, `monthly`.
+- Repeat `--input` to target specific markdown files; when omitted, the CLI scans all markdown files under `<project>/planning`, `<project>/research`, and `<project>/discussion`.
+- Repeat `--base` to provide specific previous reports; when omitted, the CLI loads all markdown files under `<project>/reports`.
+- Report files include YAML front matter with `period`, `generated_at`, `model`, `input_files`, and `base_reports`.
 
 Stage-1 files include YAML front matter with `category`, `source`, and `merged`.
 `merge` only picks files where `merged` is not `true`.
 
-Topic files include YAML front matter metadata (`topic`, `category`, `created_at`, `updated_at`, `tags`, `sources`, `source_refs`, `merged_digest_ids`).
+Topic files include YAML front matter metadata (`topic`, `category`, `created_at`, `updated_at`, `tags`, `sources`, `merged_digest_ids`).
 Tag metadata is normalized to lowercase kebab-case, deduplicated, and sorted.
 
 Topic files are canonical-only: each file keeps a single merged `Summary/Key Points/Timeline/References` view instead of appending chronological digest entries.

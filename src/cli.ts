@@ -6,6 +6,8 @@ import {
   type MergeArgs,
   parseDigestCommandArgs,
   parseMergeCommandArgs,
+  parseReportCommandArgs,
+  type ReportArgs,
 } from "./cli/args";
 import {
   colorizeDiffPreview,
@@ -21,9 +23,13 @@ import {
 import {
   listPendingStageOneDigestItems,
   listTopicCandidates,
+  loadReportContext,
   markStageOneDigestItemMerged,
   prepareTopicMerge,
+  resolveBaseReportFiles,
+  resolveReportInputFiles,
   writePreparedTopicMerge,
+  writeReportFile,
   writeStageOneDigestItems,
 } from "./files";
 import { createLogger, type Logger } from "./logging";
@@ -31,18 +37,29 @@ import {
   loadPromptTemplateFromFile,
   resolveBuiltInPromptPath,
 } from "./prompt-template";
+import { generateReport, renderReportMarkdown } from "./report";
 
-export { parseDigestCommandArgs, parseMergeCommandArgs, renderDiffPreview };
+export {
+  parseDigestCommandArgs,
+  parseMergeCommandArgs,
+  parseReportCommandArgs,
+  renderDiffPreview,
+};
 
 type CliDependencies = {
   generateDigestItems: typeof generateDigestItems;
   generateTopicTargets: typeof generateTopicTargets;
+  generateReport: typeof generateReport;
   writeStageOneDigestItems: typeof writeStageOneDigestItems;
   listPendingStageOneDigestItems: typeof listPendingStageOneDigestItems;
   markStageOneDigestItemMerged: typeof markStageOneDigestItemMerged;
   listTopicCandidates: typeof listTopicCandidates;
   prepareTopicMerge: typeof prepareTopicMerge;
   writePreparedTopicMerge: typeof writePreparedTopicMerge;
+  resolveReportInputFiles: typeof resolveReportInputFiles;
+  resolveBaseReportFiles: typeof resolveBaseReportFiles;
+  loadReportContext: typeof loadReportContext;
+  writeReportFile: typeof writeReportFile;
   readTextFile: (filePath: string) => Promise<string>;
   confirmMerge: (targetPath: string, preview: string) => Promise<boolean>;
   createLogger: (options: {
@@ -67,6 +84,7 @@ function usage(): string {
     "Usage:",
     "  bun run index.ts digest --input <file> --project <output-root> [--model <model>] [--verbose]",
     "  bun run index.ts merge --project <output-root> [--model <model>] [--verbose]",
+    "  bun run index.ts report --project <output-root> --period <daily|weekly|bi-weekly|monthly> [--input <file> ...] [--base <file> ...] [--model <model>] [--verbose]",
   ].join("\n");
 }
 
@@ -288,6 +306,73 @@ async function runMergeCommand(
   return 0;
 }
 
+async function runReportCommand(
+  parsed: ReportArgs,
+  deps: CliDependencies,
+  logger: Logger,
+): Promise<number> {
+  const projectRoot = path.resolve(parsed.project);
+  const reportPromptTemplate = await loadPromptTemplateFromFile(
+    resolveBuiltInPromptPath("report"),
+  );
+
+  await logger.progress(
+    "report.resolve_input",
+    "Resolving report input files...",
+  );
+  const inputFiles = await deps.resolveReportInputFiles(
+    projectRoot,
+    parsed.input,
+  );
+  await logger.progress(
+    "report.input_count",
+    `Resolved ${inputFiles.length} report input file(s).`,
+  );
+
+  await logger.progress(
+    "report.resolve_base",
+    "Resolving base report files...",
+  );
+  const baseFiles = await deps.resolveBaseReportFiles(projectRoot, parsed.base);
+  await logger.progress(
+    "report.base_count",
+    `Resolved ${baseFiles.length} base report file(s).`,
+  );
+
+  await logger.progress("report.load_context", "Loading report context...");
+  const context = await deps.loadReportContext({
+    projectRoot,
+    period: parsed.period,
+    inputFiles,
+    baseFiles,
+  });
+
+  await logger.progress("report.generate", "Generating report...");
+  const generated = await deps.generateReport(context, {
+    model: parsed.model,
+    logger,
+    promptTemplate: reportPromptTemplate,
+  });
+
+  await logger.progress("report.write", "Writing report file...");
+  const markdown = renderReportMarkdown(generated);
+  const written = await deps.writeReportFile({
+    projectRoot,
+    period: parsed.period,
+    model: parsed.model,
+    inputFiles,
+    baseFiles,
+    markdown,
+  });
+
+  await logger.progress(
+    "report.complete",
+    `Generated report: ${written.absolutePath}`,
+  );
+
+  return 0;
+}
+
 export async function runCli(
   argv: string[],
   dependencies: Partial<CliDependencies> = {},
@@ -296,12 +381,17 @@ export async function runCli(
   const deps: CliDependencies = {
     generateDigestItems,
     generateTopicTargets,
+    generateReport,
     writeStageOneDigestItems,
     listPendingStageOneDigestItems,
     markStageOneDigestItemMerged,
     listTopicCandidates,
     prepareTopicMerge,
     writePreparedTopicMerge,
+    resolveReportInputFiles,
+    resolveBaseReportFiles,
+    loadReportContext,
+    writeReportFile,
     readTextFile: defaultReadTextFile,
     confirmMerge: defaultConfirmMerge,
     createLogger,
@@ -320,7 +410,7 @@ export async function runCli(
     : argv;
 
   const command = normalizedArgv[0];
-  if (command !== "digest" && command !== "merge") {
+  if (command !== "digest" && command !== "merge" && command !== "report") {
     terminal.err(`Unknown command: ${command ?? "(none)"}`);
     terminal.err(usage());
     return 1;
@@ -344,6 +434,15 @@ export async function runCli(
     if (command === "digest") {
       const parsed = parseDigestCommandArgs(normalizedArgv.slice(1));
       const exitCode = await runDigestCommand(parsed, deps, logger);
+      await logger.debug("cli.complete", "Command completed successfully", {
+        command,
+      });
+      return exitCode;
+    }
+
+    if (command === "report") {
+      const parsed = parseReportCommandArgs(normalizedArgv.slice(1));
+      const exitCode = await runReportCommand(parsed, deps, logger);
       await logger.debug("cli.complete", "Command completed successfully", {
         command,
       });

@@ -76,6 +76,19 @@ function computeDigestIdentity(item: DigestItem): string {
   return `hash:${createHash("sha1").update(hashInput).digest("hex")}`;
 }
 
+function toReferenceDigestId(referenceKey: string): string {
+  return `refs:${referenceKey}`;
+}
+
+function normalizeDigestId(value: string): string {
+  const normalized = value.trim();
+  if (normalized.startsWith("refs:") || normalized.startsWith("hash:")) {
+    return normalized;
+  }
+
+  return toReferenceDigestId(normalized);
+}
+
 function buildTopicFrontMatter(options: {
   existingMetadata: Partial<TopicFrontMatter>;
   category: DigestCategory;
@@ -83,7 +96,7 @@ function buildTopicFrontMatter(options: {
   target: TopicRoutingTarget;
   nowIso: string;
   digestId: string;
-  sourceRefs: string[];
+  existingDigestIds: string[];
   updatedAt: string;
 }): TopicFrontMatter {
   const {
@@ -93,7 +106,7 @@ function buildTopicFrontMatter(options: {
     target,
     nowIso,
     digestId,
-    sourceRefs,
+    existingDigestIds,
     updatedAt,
   } = options;
 
@@ -110,10 +123,7 @@ function buildTopicFrontMatter(options: {
     ...(existingMetadata.sources ?? []),
     item.source,
   ]);
-  const mergedDigestIds = uniqueOrdered([
-    ...(existingMetadata.merged_digest_ids ?? []),
-    digestId,
-  ]);
+  const mergedDigestIds = uniqueOrdered([...existingDigestIds, digestId]);
 
   return {
     topic,
@@ -122,10 +132,6 @@ function buildTopicFrontMatter(options: {
     updated_at: updatedAt,
     tags,
     sources,
-    source_refs: uniqueOrdered([
-      ...(existingMetadata.source_refs ?? []),
-      ...sourceRefs,
-    ]),
     merged_digest_ids: mergedDigestIds,
   };
 }
@@ -175,20 +181,21 @@ export function buildTopicMergeContent(options: {
   const parsed = parseFrontMatter(options.currentContent);
   const existing = extractCanonicalTopicData(parsed.body);
   const incomingRefKeys = computeReferenceKeys(options.item);
-  const existingRefKeys = uniqueOrdered([
-    ...(parsed.metadata.source_refs ?? []),
-    ...existing.references.map(
-      (reference) => `${reference.source}: ${reference.link}`,
+  const incomingRefDigestIds = incomingRefKeys.map(toReferenceDigestId);
+  const existingDigestIds = uniqueOrdered([
+    ...(parsed.metadata.merged_digest_ids ?? []).map(normalizeDigestId),
+    ...(parsed.metadata.merged_ingest_ids ?? []).map(normalizeDigestId),
+    ...(parsed.metadata.source_refs ?? []).map(normalizeDigestId),
+    ...existing.references.map((reference) =>
+      toReferenceDigestId(`${reference.source}: ${reference.link}`),
     ),
   ]);
   const digestId = computeDigestIdentity(options.item);
-  const hasDigestId = (parsed.metadata.merged_digest_ids ?? []).includes(
-    digestId,
-  );
+  const hasDigestId = existingDigestIds.includes(digestId);
   const hasAllReferences =
     incomingRefKeys.length > 0 &&
-    incomingRefKeys.every((referenceKey) =>
-      existingRefKeys.includes(referenceKey),
+    incomingRefDigestIds.every((referenceDigestId) =>
+      existingDigestIds.includes(referenceDigestId),
     );
 
   if (hasDigestId || hasAllReferences) {
@@ -200,7 +207,6 @@ export function buildTopicMergeContent(options: {
 
   const mergedCanonical = mergeCanonical(existing, options.item);
   const body = buildCanonicalBody(mergedCanonical);
-  const sourceRefs = uniqueOrdered([...existingRefKeys, ...incomingRefKeys]);
 
   const stableMetadata = buildTopicFrontMatter({
     existingMetadata: parsed.metadata,
@@ -209,7 +215,7 @@ export function buildTopicMergeContent(options: {
     target: options.target,
     nowIso,
     digestId,
-    sourceRefs,
+    existingDigestIds,
     updatedAt: parsed.metadata.updated_at ?? nowIso,
   });
   const stableContent = `${serializeFrontMatter(stableMetadata)}${body.trim()}\n`;
@@ -227,7 +233,7 @@ export function buildTopicMergeContent(options: {
     target: options.target,
     nowIso,
     digestId,
-    sourceRefs,
+    existingDigestIds,
     updatedAt: nowIso,
   });
 
