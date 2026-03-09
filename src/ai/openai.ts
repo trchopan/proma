@@ -8,6 +8,19 @@ export type ChatCompletionOptions = {
   messages: ChatMessage[];
   temperature?: number;
   responseFormat?: ChatResponseFormat;
+  logger?: {
+    verbose: boolean;
+    debug: (
+      event: string,
+      message: string,
+      meta?: Record<string, unknown>,
+    ) => Promise<void>;
+    error: (
+      event: string,
+      message: string,
+      meta?: Record<string, unknown>,
+    ) => Promise<void>;
+  };
 };
 
 type JsonSchemaResponseFormat = {
@@ -72,7 +85,25 @@ export async function createChatCompletion(
     throw new Error("Missing OPENAI_API_KEY environment variable");
   }
 
-  const response = await fetch(resolveChatCompletionsUrl(), {
+  const endpoint = resolveChatCompletionsUrl();
+  const startedAt = Date.now();
+  await options.logger?.debug(
+    "ai.request.start",
+    "Starting OpenAI chat completion request",
+    {
+      model: options.model,
+      endpoint,
+      messageCount: options.messages.length,
+      responseFormatType: options.responseFormat?.type ?? null,
+      prompt: options.logger?.verbose
+        ? options.messages
+            .map((message) => `${message.role}: ${message.content}`)
+            .join("\n\n")
+        : undefined,
+    },
+  );
+
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -88,11 +119,24 @@ export async function createChatCompletion(
   });
 
   const rawPayload = (await response.json()) as OpenAiResponse;
+  const durationMs = Date.now() - startedAt;
 
   if (!response.ok) {
     const message =
       rawPayload?.error?.message ??
       `OpenAI request failed with status ${response.status}`;
+
+    await options.logger?.error(
+      "ai.request.error",
+      `OpenAI request failed: ${message}`,
+      {
+        model: options.model,
+        endpoint,
+        status: response.status,
+        durationMs,
+        response: options.logger?.verbose ? rawPayload : undefined,
+      },
+    );
 
     if (
       options.responseFormat?.type === "json_schema" &&
@@ -118,6 +162,18 @@ export async function createChatCompletion(
       "Malformed OpenAI response: missing choices[0].message.content",
     );
   }
+
+  await options.logger?.debug(
+    "ai.request.success",
+    "OpenAI chat completion succeeded",
+    {
+      model: options.model,
+      endpoint,
+      status: response.status,
+      durationMs,
+      response: options.logger?.verbose ? content : undefined,
+    },
+  );
 
   return content;
 }

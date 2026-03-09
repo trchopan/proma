@@ -113,3 +113,47 @@ test("createChatCompletion surfaces refusal from model", async () => {
     }),
   ).rejects.toThrow("Model refused structured output");
 });
+
+test("createChatCompletion logs full prompt and response in verbose mode", async () => {
+  process.env.OPENAI_API_KEY = "test-key";
+
+  globalThis.fetch = (async () => {
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: "full response body" } }],
+      }),
+      { status: 200 },
+    );
+  }) as unknown as typeof fetch;
+
+  const debugEvents: Array<{ event: string; meta?: Record<string, unknown> }> =
+    [];
+  const errorEvents: Array<{ event: string; meta?: Record<string, unknown> }> =
+    [];
+
+  await createChatCompletion({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: "full prompt body" }],
+    logger: {
+      verbose: true,
+      debug: async (event, _message, meta) => {
+        debugEvents.push({ event, meta });
+      },
+      error: async (event, _message, meta) => {
+        errorEvents.push({ event, meta });
+      },
+    },
+  });
+
+  expect(errorEvents).toHaveLength(0);
+
+  const startEvent = debugEvents.find(
+    (value) => value.event === "ai.request.start",
+  );
+  const successEvent = debugEvents.find(
+    (value) => value.event === "ai.request.success",
+  );
+
+  expect(startEvent?.meta?.prompt).toBe("user: full prompt body");
+  expect(successEvent?.meta?.response).toBe("full response body");
+});

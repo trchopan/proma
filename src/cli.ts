@@ -10,6 +10,7 @@ import {
   writePreparedTopicMerge,
   writeStageOneDigestItems,
 } from "./files";
+import { createLogger, type Logger } from "./logging";
 
 type CliDependencies = {
   generateDigestItems: typeof generateDigestItems;
@@ -22,6 +23,12 @@ type CliDependencies = {
   writePreparedTopicMerge: typeof writePreparedTopicMerge;
   readTextFile: (filePath: string) => Promise<string>;
   confirmMerge: (targetPath: string, preview: string) => Promise<boolean>;
+  createLogger: (options: {
+    command: string;
+    verbose: boolean;
+    out: (message: string) => void;
+    err: (message: string) => void;
+  }) => Promise<Logger>;
 };
 
 type CliIO = {
@@ -33,11 +40,13 @@ type DigestArgs = {
   input: string;
   project: string;
   model: string;
+  verbose: boolean;
 };
 
 type MergeArgs = {
   project: string;
   model: string;
+  verbose: boolean;
 };
 
 const DEFAULT_MODEL = "gpt-5.2";
@@ -49,8 +58,8 @@ function defaultReadTextFile(filePath: string): Promise<string> {
 function usage(): string {
   return [
     "Usage:",
-    "  bun run index.ts digest --input <file> --project <output-root> [--model <model>]",
-    "  bun run index.ts merge --project <output-root> [--model <model>]",
+    "  bun run index.ts digest --input <file> --project <output-root> [--model <model>] [--verbose]",
+    "  bun run index.ts merge --project <output-root> [--model <model>] [--verbose]",
   ].join("\n");
 }
 
@@ -302,13 +311,28 @@ async function defaultConfirmMerge(
   }
 }
 
-function parseOptionValues(args: string[]): Map<string, string> {
+function parseOptionValues(args: string[]): {
+  values: Map<string, string>;
+  flags: Set<string>;
+} {
   const values = new Map<string, string>();
+  const flags = new Set<string>();
+  const valueOptions = new Set(["--input", "--project", "--model"]);
+  const flagOptions = new Set(["--verbose"]);
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i] ?? "";
     if (!arg.startsWith("--")) {
       continue;
+    }
+
+    if (flagOptions.has(arg)) {
+      flags.add(arg);
+      continue;
+    }
+
+    if (!valueOptions.has(arg)) {
+      throw new Error(`Unknown argument: ${arg}`);
     }
 
     const value = args[i + 1];
@@ -320,14 +344,15 @@ function parseOptionValues(args: string[]): Map<string, string> {
     i += 1;
   }
 
-  return values;
+  return { values, flags };
 }
 
 export function parseDigestCommandArgs(args: string[]): DigestArgs {
-  const values = parseOptionValues(args);
+  const { values, flags } = parseOptionValues(args);
   const input = values.get("--input");
   const project = values.get("--project");
   const model = values.get("--model") ?? DEFAULT_MODEL;
+  const verbose = flags.has("--verbose");
 
   if (!input) {
     throw new Error("Missing required argument: --input");
@@ -337,19 +362,20 @@ export function parseDigestCommandArgs(args: string[]): DigestArgs {
     throw new Error("Missing required argument: --project");
   }
 
-  return { input, project, model };
+  return { input, project, model, verbose };
 }
 
 export function parseMergeCommandArgs(args: string[]): MergeArgs {
-  const values = parseOptionValues(args);
+  const { values, flags } = parseOptionValues(args);
   const project = values.get("--project");
   const model = values.get("--model") ?? DEFAULT_MODEL;
+  const verbose = flags.has("--verbose");
 
   if (!project) {
     throw new Error("Missing required argument: --project");
   }
 
-  return { project, model };
+  return { project, model, verbose };
 }
 
 export async function runCli(
@@ -368,6 +394,7 @@ export async function runCli(
     writePreparedTopicMerge,
     readTextFile: defaultReadTextFile,
     confirmMerge: defaultConfirmMerge,
+    createLogger,
     ...dependencies,
   };
   const terminal: CliIO = {
@@ -376,57 +403,119 @@ export async function runCli(
     ...io,
   };
 
-  const command = argv[0];
+  const hasGlobalVerbose = argv.includes("--verbose");
+  const normalizedArgv = hasGlobalVerbose
+    ? argv.filter((arg) => arg !== "--verbose")
+    : argv;
+  const command = normalizedArgv[0];
   if (command !== "digest" && command !== "merge") {
     terminal.err(`Unknown command: ${command ?? "(none)"}`);
     terminal.err(usage());
     return 1;
   }
 
+  const logger = await deps.createLogger({
+    command,
+    verbose: hasGlobalVerbose,
+    out: terminal.out,
+    err: terminal.err,
+  });
+
+  await logger.debug("cli.start", `Starting '${command}' command`, {
+    argv,
+    normalizedArgv,
+    logFilePath: logger.logFilePath,
+  });
+  await logger.info("cli.log_path", `Writing logs to ${logger.logFilePath}`);
+
   try {
     if (command === "digest") {
-      const parsed = parseDigestCommandArgs(argv.slice(1));
+      const parsed = parseDigestCommandArgs(normalizedArgv.slice(1));
       const inputPath = path.resolve(parsed.input);
       const projectRoot = path.resolve(parsed.project);
+      await logger.progress("digest.read_input", `Reading input: ${inputPath}`);
       const inputText = await deps.readTextFile(inputPath);
+      await logger.debug("digest.input_loaded", "Loaded input text", {
+        inputPath,
+        inputBytes: inputText.length,
+      });
+      await logger.progress(
+        "digest.generate_items",
+        "Generating digest items...",
+      );
       const items = await deps.generateDigestItems(inputText, {
         model: parsed.model,
+        logger,
       });
+      await logger.debug("digest.items_generated", "Generated digest items", {
+        itemCount: items.length,
+      });
+      await logger.progress(
+        "digest.write_stage_one",
+        "Writing stage 1 digest notes...",
+      );
       const stagedItems = await deps.writeStageOneDigestItems({
         projectRoot,
         items,
       });
 
-      terminal.out(`Wrote ${stagedItems.length} stage 1 digest file(s):`);
+      await logger.progress(
+        "digest.write_complete",
+        `Wrote ${stagedItems.length} stage 1 digest file(s):`,
+      );
       for (const stagedItem of stagedItems) {
-        terminal.out(`- ${stagedItem.absolutePath}`);
+        await logger.info("digest.stage_file", `- ${stagedItem.absolutePath}`, {
+          path: stagedItem.absolutePath,
+        });
       }
 
+      await logger.debug("cli.complete", "Command completed successfully", {
+        command,
+      });
       return 0;
     }
 
-    const parsed = parseMergeCommandArgs(argv.slice(1));
+    const parsed = parseMergeCommandArgs(normalizedArgv.slice(1));
     const projectRoot = path.resolve(parsed.project);
+    await logger.progress(
+      "merge.list_pending",
+      "Scanning pending staged notes...",
+    );
     const stagedItems = await deps.listPendingStageOneDigestItems(projectRoot);
-    terminal.out(`Found ${stagedItems.length} pending stage 1 digest file(s).`);
+    await logger.progress(
+      "merge.pending_count",
+      `Found ${stagedItems.length} pending stage 1 digest file(s).`,
+    );
 
     const mergedFiles: string[] = [];
     const skippedFiles: string[] = [];
     let completedStagedItems = 0;
 
     for (const stagedItem of stagedItems) {
+      await logger.debug("merge.process_item", "Processing staged note", {
+        stagedPath: stagedItem.absolutePath,
+        category: stagedItem.item.category,
+      });
       let hasSkippedMerge = false;
       const candidates = await deps.listTopicCandidates(
         projectRoot,
         stagedItem.item.category,
       );
+      await logger.debug("merge.candidates", "Loaded topic candidates", {
+        category: stagedItem.item.category,
+        candidateCount: candidates.length,
+      });
       const targets = await deps.generateTopicTargets(
         stagedItem.item,
         candidates,
         {
           model: parsed.model,
+          logger,
         },
       );
+      await logger.debug("merge.targets", "Generated topic routing targets", {
+        targetCount: targets.length,
+      });
 
       for (const target of targets) {
         const plan = await deps.prepareTopicMerge({
@@ -437,7 +526,10 @@ export async function runCli(
         });
 
         if (!plan.hasChanges) {
-          terminal.out(`No topic change: ${plan.targetPath}`);
+          await logger.progress(
+            "merge.no_change",
+            `No topic change: ${plan.targetPath}`,
+          );
           continue;
         }
 
@@ -446,17 +538,31 @@ export async function runCli(
           plan.proposedContent,
         );
         const approved = await deps.confirmMerge(plan.targetPath, preview);
+        await logger.debug(
+          "merge.confirmation",
+          "Merge confirmation captured",
+          {
+            targetPath: plan.targetPath,
+            approved,
+          },
+        );
 
         if (!approved) {
           hasSkippedMerge = true;
           skippedFiles.push(plan.targetPath);
-          terminal.out(`Skipped merge: ${plan.targetPath}`);
+          await logger.progress(
+            "merge.skipped",
+            `Skipped merge: ${plan.targetPath}`,
+          );
           continue;
         }
 
         await deps.writePreparedTopicMerge(plan);
         mergedFiles.push(plan.targetPath);
-        terminal.out(`Merged into topic file: ${plan.targetPath}`);
+        await logger.progress(
+          "merge.applied",
+          `Merged into topic file: ${plan.targetPath}`,
+        );
       }
 
       if (hasSkippedMerge) {
@@ -465,21 +571,40 @@ export async function runCli(
 
       await deps.markStageOneDigestItemMerged(stagedItem.absolutePath);
       completedStagedItems += 1;
-      terminal.out(`Marked staged note as merged: ${stagedItem.absolutePath}`);
+      await logger.progress(
+        "merge.marked_staged",
+        `Marked staged note as merged: ${stagedItem.absolutePath}`,
+      );
     }
 
-    terminal.out(`Confirmed ${mergedFiles.length} topic merge(s).`);
+    await logger.progress(
+      "merge.summary.confirmed",
+      `Confirmed ${mergedFiles.length} topic merge(s).`,
+    );
     if (skippedFiles.length > 0) {
-      terminal.out(`Skipped ${skippedFiles.length} topic merge(s).`);
+      await logger.progress(
+        "merge.summary.skipped",
+        `Skipped ${skippedFiles.length} topic merge(s).`,
+      );
     }
-    terminal.out(`Marked ${completedStagedItems} staged note(s) as merged.`);
+    await logger.progress(
+      "merge.summary.marked",
+      `Marked ${completedStagedItems} staged note(s) as merged.`,
+    );
+
+    await logger.debug("cli.complete", "Command completed successfully", {
+      command,
+      mergedCount: mergedFiles.length,
+      skippedCount: skippedFiles.length,
+      markedCount: completedStagedItems,
+    });
 
     return 0;
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unknown CLI error";
-    terminal.err(`Error: ${message}`);
-    terminal.err(usage());
+    await logger.error("cli.error", `Error: ${message}`);
+    await logger.error("cli.usage", usage());
     return 1;
   }
 }

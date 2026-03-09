@@ -1,4 +1,5 @@
 import { type ChatCompletionOptions, createChatCompletion } from "./ai/openai";
+import type { Logger } from "./logging";
 
 export const DIGEST_CATEGORIES = [
   "planning",
@@ -26,6 +27,7 @@ export type DigestItem = {
 
 export type DigestGenerationOptions = {
   model: string;
+  logger?: Logger;
 };
 
 export type TopicRoutingCandidate = {
@@ -45,6 +47,7 @@ export type TopicRoutingTarget = {
 
 export type TopicRoutingOptions = {
   model: string;
+  logger?: Logger;
 };
 
 type ChatCompletionFn = (options: ChatCompletionOptions) => Promise<string>;
@@ -326,6 +329,7 @@ export async function generateDigestItems(
 
   const responseText = await chatCompletion({
     model: options.model,
+    logger: options.logger,
     temperature: 0.2,
     messages: [
       {
@@ -484,6 +488,7 @@ export async function generateTopicTargets(
 
   const responseText = await chatCompletion({
     model: options.model,
+    logger: options.logger,
     temperature: 0.2,
     messages: [
       {

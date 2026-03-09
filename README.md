@@ -30,10 +30,22 @@ Run stage 1 (`digest`):
 bun run index.ts digest --input ./notes.txt --project ./acme
 ```
 
+Run stage 1 with verbose debugging logs:
+
+```bash
+bun run index.ts digest --input ./notes.txt --project ./acme --verbose
+```
+
 Run stage 2/3 (`merge`):
 
 ```bash
 bun run index.ts merge --project ./acme
+```
+
+Run stage 2/3 with verbose debugging logs:
+
+```bash
+bun run index.ts merge --project ./acme --verbose
 ```
 
 Optional model override:
@@ -59,6 +71,12 @@ Topic files are canonical-only: each file keeps a single merged `Summary/Key Poi
 Repeated ingestion of already-merged references becomes a no-op (`No topic change`).
 
 After topic targets are selected, the CLI shows a diff preview for each proposed merge and asks for confirmation (`y` to apply, default `N` to skip).
+
+Logging behavior:
+
+- Every run writes structured logs to `logs/<YYYY-MM-DD>/*.jsonl` by default.
+- Without `--verbose`, console output is progress-focused.
+- With `--verbose`, console shows heavy debug logs and file logs include full AI prompt/response text.
 
 Each generated markdown file includes:
 

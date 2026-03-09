@@ -22,6 +22,24 @@ test("parseDigestCommandArgs parses required and optional args", () => {
     input: "notes.txt",
     project: "apollo",
     model: "gpt-4.1",
+    verbose: false,
+  });
+});
+
+test("parseDigestCommandArgs parses --verbose flag", () => {
+  const parsed = parseDigestCommandArgs([
+    "--input",
+    "notes.txt",
+    "--project",
+    "apollo",
+    "--verbose",
+  ]);
+
+  expect(parsed).toEqual({
+    input: "notes.txt",
+    project: "apollo",
+    model: "gpt-5.2",
+    verbose: true,
   });
 });
 
@@ -36,6 +54,17 @@ test("parseMergeCommandArgs parses required and optional args", () => {
   expect(parsed).toEqual({
     project: "apollo",
     model: "gpt-4.1",
+    verbose: false,
+  });
+});
+
+test("parseMergeCommandArgs parses --verbose flag", () => {
+  const parsed = parseMergeCommandArgs(["--project", "apollo", "--verbose"]);
+
+  expect(parsed).toEqual({
+    project: "apollo",
+    model: "gpt-5.2",
+    verbose: true,
   });
 });
 
