@@ -65,6 +65,7 @@ test("runCli executes digest flow and reports written files", async () => {
   const mockItems: DigestItem[] = [
     {
       category: "planning",
+      source: "wiki",
       summary: "Plan sprint goals.",
       keyPoints: ["Align scope"],
       references: [],

@@ -12,9 +12,10 @@ test("parseDigestItemsResponse accepts fenced JSON", () => {
     JSON.stringify([
       {
         category: "planning",
+        source: "slack",
         summary: "Plan Q2 launch milestones.",
         keyPoints: ["Draft timeline", "Define dependencies"],
-        references: ["https://example.com/plan"],
+        references: [{ source: "slack", link: "https://example.com/plan" }],
       },
     ]),
     "```",
@@ -25,10 +26,27 @@ test("parseDigestItemsResponse accepts fenced JSON", () => {
   expect(items).toHaveLength(1);
   expect(items[0]).toEqual({
     category: "planning",
+    source: "slack",
     summary: "Plan Q2 launch milestones.",
     keyPoints: ["Draft timeline", "Define dependencies"],
-    references: ["https://example.com/plan"],
+    references: [{ source: "slack", link: "https://example.com/plan" }],
   });
+});
+
+test("parseDigestItemsResponse rejects invalid source", () => {
+  const response = JSON.stringify([
+    {
+      category: "planning",
+      source: "notion",
+      summary: "Invalid source sample",
+      keyPoints: [],
+      references: [],
+    },
+  ]);
+
+  expect(() => parseDigestItemsResponse(response)).toThrow(
+    "Digest item contained invalid source",
+  );
 });
 
 test("parseDigestItemsResponse rejects invalid category", () => {
@@ -49,9 +67,10 @@ test("parseDigestItemsResponse rejects invalid category", () => {
 test("renderDigestMarkdown always includes required sections", () => {
   const item: DigestItem = {
     category: "research",
+    source: "wiki",
     summary: "Compare competitor onboarding patterns.",
     keyPoints: ["Analyze signup funnel", "Review activation metrics"],
-    references: [],
+    references: [{ source: "wiki", link: "https://example.com/onboarding" }],
   };
 
   const markdown = renderDigestMarkdown(item);
@@ -59,5 +78,21 @@ test("renderDigestMarkdown always includes required sections", () => {
   expect(markdown).toContain("## Summary");
   expect(markdown).toContain("## Key Points");
   expect(markdown).toContain("## References");
-  expect(markdown).toContain("- None");
+  expect(markdown).toContain("- wiki: https://example.com/onboarding");
+});
+
+test("parseDigestItemsResponse rejects invalid reference source", () => {
+  const response = JSON.stringify([
+    {
+      category: "planning",
+      source: "slack",
+      summary: "Reference source should fail",
+      keyPoints: [],
+      references: [{ source: "drive", link: "https://example.com/doc" }],
+    },
+  ]);
+
+  expect(() => parseDigestItemsResponse(response)).toThrow(
+    "Digest item contained invalid reference source",
+  );
 });

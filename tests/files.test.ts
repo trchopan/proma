@@ -39,18 +39,21 @@ test("writeDigestItems writes expected categorized file paths", async () => {
     const items: DigestItem[] = [
       {
         category: "research",
+        source: "slack",
         summary: "Gather customer interview notes.",
         keyPoints: ["Track themes"],
-        references: ["https://example.com/notes"],
+        references: [{ source: "slack", link: "https://example.com/notes" }],
       },
       {
         category: "planning",
+        source: "git",
         summary: "Prepare implementation timeline.",
         keyPoints: [],
         references: [],
       },
       {
         category: "research",
+        source: "figma",
         summary: "Investigate pricing benchmarks.",
         keyPoints: ["Compare plans"],
         references: [],
@@ -69,8 +72,12 @@ test("writeDigestItems writes expected categorized file paths", async () => {
       path.join(dir, "research", "2026-03-09_4.md"),
     ]);
 
-    expect(written[0]).toBeDefined();
-    const writtenText = await Bun.file(written[0]!).text();
+    const firstWritten = written[0];
+    if (!firstWritten) {
+      throw new Error("Expected at least one written digest file");
+    }
+
+    const writtenText = await Bun.file(firstWritten).text();
     expect(writtenText).toContain("## Summary");
     expect(writtenText).toContain("## Key Points");
     expect(writtenText).toContain("## References");

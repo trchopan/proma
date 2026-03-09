@@ -44,7 +44,7 @@ Each generated markdown file includes:
 
 - `## Summary`
 - `## Key Points`
-- `## References`
+- `## References` entries in `- <source>: <link>` format (for example `- slack: https://...`)
 
 Development commands:
 

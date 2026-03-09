@@ -6,13 +6,22 @@ export const DIGEST_CATEGORIES = [
   "discussion",
 ] as const;
 
+export const DIGEST_SOURCES = ["slack", "wiki", "git", "figma"] as const;
+
 export type DigestCategory = (typeof DIGEST_CATEGORIES)[number];
+export type DigestSource = (typeof DIGEST_SOURCES)[number];
+
+export type DigestReference = {
+  source: DigestSource;
+  link: string;
+};
 
 export type DigestItem = {
   category: DigestCategory;
+  source: DigestSource;
   summary: string;
   keyPoints: string[];
-  references: string[];
+  references: DigestReference[];
 };
 
 export type DigestGenerationOptions = {
@@ -35,6 +44,25 @@ function normalizeCategory(input: unknown): DigestCategory | null {
   return null;
 }
 
+function normalizeSource(input: unknown): DigestSource | null {
+  if (typeof input !== "string") {
+    return null;
+  }
+
+  const value = input.trim().toLowerCase();
+
+  if (
+    value === "slack" ||
+    value === "wiki" ||
+    value === "git" ||
+    value === "figma"
+  ) {
+    return value;
+  }
+
+  return null;
+}
+
 function normalizeStringArray(input: unknown): string[] {
   if (!Array.isArray(input)) {
     return [];
@@ -44,6 +72,42 @@ function normalizeStringArray(input: unknown): string[] {
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
+}
+
+function normalizeReferences(input: unknown): DigestReference[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  const references: DigestReference[] = [];
+
+  for (const item of input) {
+    if (!item || typeof item !== "object") {
+      throw new Error(
+        "Digest item contained invalid references (expected objects with source and link)",
+      );
+    }
+
+    const source = normalizeSource((item as { source?: unknown }).source);
+    const link = (item as { link?: unknown }).link;
+
+    if (!source) {
+      throw new Error(
+        "Digest item contained invalid reference source (expected one of: slack, wiki, git, figma)",
+      );
+    }
+
+    if (typeof link !== "string" || link.trim().length === 0) {
+      throw new Error("Digest item contained empty reference link");
+    }
+
+    references.push({
+      source,
+      link: link.trim(),
+    });
+  }
+
+  return references;
 }
 
 function extractJsonBlock(content: string): string {
@@ -93,10 +157,17 @@ export function parseDigestItemsResponse(content: string): DigestItem[] {
     const category = normalizeCategory(
       (item as { category?: unknown }).category,
     );
+    const source = normalizeSource((item as { source?: unknown }).source);
     const summary = (item as { summary?: unknown }).summary;
 
     if (!category) {
       throw new Error("Digest item contained invalid category");
+    }
+
+    if (!source) {
+      throw new Error(
+        "Digest item contained invalid source (expected one of: slack, wiki, git, figma)",
+      );
     }
 
     if (typeof summary !== "string" || summary.trim().length === 0) {
@@ -105,11 +176,12 @@ export function parseDigestItemsResponse(content: string): DigestItem[] {
 
     digestItems.push({
       category,
+      source,
       summary: summary.trim(),
       keyPoints: normalizeStringArray(
         (item as { keyPoints?: unknown }).keyPoints,
       ),
-      references: normalizeStringArray(
+      references: normalizeReferences(
         (item as { references?: unknown }).references,
       ),
     });
@@ -129,7 +201,9 @@ export function renderDigestMarkdown(item: DigestItem): string {
       : "- None";
   const references =
     item.references.length > 0
-      ? item.references.map((value) => `- ${value}`).join("\n")
+      ? item.references
+          .map((value) => `- ${value.source}: ${value.link}`)
+          .join("\n")
       : "- None";
 
   return [
@@ -153,10 +227,11 @@ export async function generateDigestItems(
   const prompt = [
     "Split the user content into one or more digest items.",
     "Return ONLY JSON. Use this shape:",
-    '[{"category":"planning|research|discussion","summary":"...","keyPoints":["..."],"references":["..."]}]',
+    '[{"category":"planning|research|discussion","source":"slack|wiki|git|figma","summary":"...","keyPoints":["..."],"references":[{"source":"slack|wiki|git|figma","link":"https://..."}]}]',
     "Do not include markdown or explanatory text.",
     "Prefer fewer, meaningful digest items and avoid over-fragmenting.",
-    "If references are unknown, return an empty array.",
+    "Each item must include a source value from: slack, wiki, git, figma.",
+    "If references are unknown, return an empty array. Do not use plain strings in references.",
     "User content:",
     inputText,
   ].join("\n\n");
