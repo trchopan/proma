@@ -28,6 +28,25 @@ export type DigestGenerationOptions = {
   model: string;
 };
 
+export type TopicRoutingCandidate = {
+  slug: string;
+  topic: string;
+  tags: string[];
+  summary: string;
+};
+
+export type TopicRoutingTarget = {
+  action: "update_existing" | "create_new";
+  slug?: string;
+  shortDescription?: string;
+  topic: string;
+  tags: string[];
+};
+
+export type TopicRoutingOptions = {
+  model: string;
+};
+
 type ChatCompletionFn = (options: ChatCompletionOptions) => Promise<string>;
 
 export const DIGEST_RESPONSE_SCHEMA = {
@@ -86,6 +105,35 @@ export const DIGEST_RESPONSE_SCHEMA = {
     },
   },
   required: ["items"],
+} as const;
+
+export const TOPIC_ROUTING_RESPONSE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    targets: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          action: {
+            type: "string",
+            enum: ["update_existing", "create_new"],
+          },
+          slug: { type: ["string", "null"] },
+          shortDescription: { type: ["string", "null"] },
+          topic: { type: "string" },
+          tags: {
+            type: "array",
+            items: { type: "string" },
+          },
+        },
+        required: ["action", "slug", "shortDescription", "topic", "tags"],
+      },
+    },
+  },
+  required: ["targets"],
 } as const;
 
 function normalizeCategory(input: unknown): DigestCategory | null {
@@ -301,4 +349,162 @@ export async function generateDigestItems(
   });
 
   return parseDigestItemsResponse(responseText);
+}
+
+export function parseTopicRoutingResponse(
+  content: string,
+  candidates: TopicRoutingCandidate[],
+): TopicRoutingTarget[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error("Topic routing response was not valid JSON");
+  }
+
+  const rawTargets =
+    parsed &&
+    typeof parsed === "object" &&
+    Array.isArray((parsed as { targets?: unknown[] }).targets)
+      ? (parsed as { targets: unknown[] }).targets
+      : null;
+
+  if (!rawTargets || rawTargets.length === 0) {
+    throw new Error("Topic routing response must include at least one target");
+  }
+
+  const validSlugs = new Set(candidates.map((candidate) => candidate.slug));
+  const normalizedTargets: TopicRoutingTarget[] = [];
+
+  for (const rawTarget of rawTargets) {
+    if (!rawTarget || typeof rawTarget !== "object") {
+      continue;
+    }
+
+    const actionValue = (rawTarget as { action?: unknown }).action;
+    const topicValue = (rawTarget as { topic?: unknown }).topic;
+    const slugValue = (rawTarget as { slug?: unknown }).slug;
+    const shortDescriptionValue = (rawTarget as { shortDescription?: unknown })
+      .shortDescription;
+    const tagsValue = (rawTarget as { tags?: unknown }).tags;
+
+    const action =
+      actionValue === "update_existing" || actionValue === "create_new"
+        ? actionValue
+        : null;
+
+    if (!action) {
+      throw new Error("Topic routing target contained invalid action");
+    }
+
+    if (typeof topicValue !== "string" || topicValue.trim().length === 0) {
+      throw new Error("Topic routing target contained empty topic");
+    }
+
+    const tags = normalizeStringArray(tagsValue);
+
+    if (action === "update_existing") {
+      if (typeof slugValue !== "string" || slugValue.trim().length === 0) {
+        throw new Error(
+          "Topic routing target for update_existing must include a slug",
+        );
+      }
+
+      const slug = slugValue.trim();
+      if (!validSlugs.has(slug)) {
+        throw new Error(
+          `Topic routing target referenced unknown slug: ${slug}`,
+        );
+      }
+
+      normalizedTargets.push({
+        action,
+        slug,
+        topic: topicValue.trim(),
+        tags,
+      });
+      continue;
+    }
+
+    const shortDescription =
+      typeof shortDescriptionValue === "string"
+        ? shortDescriptionValue.trim()
+        : "";
+
+    if (shortDescription.length === 0 && topicValue.trim().length === 0) {
+      throw new Error(
+        "Topic routing target for create_new must include shortDescription or topic",
+      );
+    }
+
+    normalizedTargets.push({
+      action,
+      shortDescription,
+      topic: topicValue.trim(),
+      tags,
+    });
+  }
+
+  if (normalizedTargets.length === 0) {
+    throw new Error("Topic routing response did not contain any valid targets");
+  }
+
+  return normalizedTargets;
+}
+
+export async function generateTopicTargets(
+  item: DigestItem,
+  candidates: TopicRoutingCandidate[],
+  options: TopicRoutingOptions,
+  chatCompletion: ChatCompletionFn = createChatCompletion,
+): Promise<TopicRoutingTarget[]> {
+  const candidateText =
+    candidates.length > 0
+      ? candidates
+          .map((candidate) => {
+            const tagsText =
+              candidate.tags.length > 0 ? candidate.tags.join(", ") : "none";
+            return `- slug: ${candidate.slug}; topic: ${candidate.topic}; tags: ${tagsText}; summary: ${candidate.summary}`;
+          })
+          .join("\n")
+      : "- No existing topic files";
+
+  const prompt = [
+    "Route this digest item into one or more topic files.",
+    "Prefer update_existing when a candidate clearly matches.",
+    "Use create_new when no candidate is a close match.",
+    "You may return multiple targets if the digest item belongs in multiple existing topics.",
+    "For create_new, provide shortDescription suitable for a kebab-case filename.",
+    "Return tags as concise lowercase phrases.",
+    "Digest item:",
+    JSON.stringify(item, null, 2),
+    "Candidate topic files:",
+    candidateText,
+  ].join("\n\n");
+
+  const responseText = await chatCompletion({
+    model: options.model,
+    temperature: 0.2,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You route digest items to topic files and must satisfy the provided response schema. Output all human-readable text in English.",
+      },
+      {
+        role: "user",
+        content: prompt,
+      },
+    ],
+    responseFormat: {
+      type: "json_schema",
+      json_schema: {
+        name: "topic_routing_targets",
+        strict: true,
+        schema: TOPIC_ROUTING_RESPONSE_SCHEMA,
+      },
+    },
+  });
+
+  return parseTopicRoutingResponse(responseText, candidates);
 }

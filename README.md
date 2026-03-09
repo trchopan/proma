@@ -14,7 +14,7 @@ bun run index.ts
 
 ## Digest CLI feature
 
-The `digest` command reads an input text file, asks OpenAI to split/classify it into digest items, and writes markdown files by category.
+The `digest` command reads an input text file, asks OpenAI to split/classify it into digest items, then runs staged organization into topic files.
 Digest summaries and key points are always generated in English, even when input notes are in another language.
 
 Required environment variable:
@@ -39,9 +39,16 @@ Note: the digest flow uses OpenAI Structured Outputs (`json_schema`) and fails f
 
 `--project` is the root output directory. Output structure:
 
-- `<project>/planning/<YYYY-MM-DD>_<index>.md`
-- `<project>/research/<YYYY-MM-DD>_<index>.md`
-- `<project>/discussion/<YYYY-MM-DD>_<index>.md`
+- Stage 1 raw digests: `<project>/notes/<category>_<YYYY-MM-DD>_<index>.md`
+- Stage 2/3 topic files: `<project>/<category>/<topic-slug>.md`
+
+Topic files include YAML front matter metadata (`topic`, `category`, `created_at`, `updated_at`, `tags`, `sources`, `source_refs`, `merged_digest_ids`).
+Tag metadata is normalized to lowercase kebab-case, deduplicated, and sorted.
+
+Topic files are canonical-only: each file keeps a single merged `Summary/Key Points/References` view instead of appending chronological digest entries.
+Repeated ingestion of already-merged references becomes a no-op (`No topic change`).
+
+After topic targets are selected, the CLI shows a diff preview for each proposed merge and asks for confirmation (`y` to apply, default `N` to skip).
 
 Each generated markdown file includes:
 

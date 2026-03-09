@@ -60,7 +60,74 @@ test("runCli returns readable error for missing project arg", async () => {
   expect(errors.join("\n")).toContain("Missing required argument: --project");
 });
 
-test("runCli executes digest flow and reports written files", async () => {
+test("runCli executes staged flow and writes confirmed merges", async () => {
+  const output: string[] = [];
+  const mockItems: DigestItem[] = [
+    {
+      category: "planning",
+      source: "wiki",
+      summary: "Plan sprint goals.",
+      keyPoints: ["Align scope"],
+      references: [],
+    },
+  ];
+
+  const writes: string[] = [];
+
+  const exitCode = await runCli(
+    ["digest", "--input", "./input.txt", "--project", "apollo"],
+    {
+      readTextFile: async () => "raw text",
+      generateDigestItems: async () => mockItems,
+      writeStageOneDigestItems: async () => [
+        {
+          item: mockItems[0] as DigestItem,
+          absolutePath: "/tmp/apollo/notes/planning_2026-03-09_1.md",
+          relativePath: "notes/planning_2026-03-09_1.md",
+        },
+      ],
+      listTopicCandidates: async () => [],
+      generateTopicTargets: async () => [
+        {
+          action: "create_new",
+          shortDescription: "sprint-goals",
+          topic: "Sprint Goals",
+          tags: ["sprint"],
+        },
+      ],
+      prepareTopicMerge: async () => ({
+        targetPath: "/tmp/apollo/planning/sprint-goals.md",
+        relativeTargetPath: "planning/sprint-goals.md",
+        currentContent: "",
+        proposedContent: "next",
+        isNew: true,
+        hasChanges: true,
+      }),
+      confirmMerge: async () => true,
+      writePreparedTopicMerge: async (plan) => {
+        writes.push(plan.targetPath);
+      },
+    },
+    {
+      out: (message) => {
+        output.push(message);
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(writes).toEqual(["/tmp/apollo/planning/sprint-goals.md"]);
+  expect(output).toContain("Wrote 1 stage 1 digest file(s):");
+  expect(output).toContain(
+    "Merged into topic file: /tmp/apollo/planning/sprint-goals.md",
+  );
+  expect(output).toContain("Confirmed 1 topic merge(s).");
+});
+
+test("runCli skips confirmation when no topic change", async () => {
   const output: string[] = [];
   const mockItems: DigestItem[] = [
     {
@@ -77,7 +144,36 @@ test("runCli executes digest flow and reports written files", async () => {
     {
       readTextFile: async () => "raw text",
       generateDigestItems: async () => mockItems,
-      writeDigestItems: async () => ["/tmp/apollo/planning/2026-03-09_1.md"],
+      writeStageOneDigestItems: async () => [
+        {
+          item: mockItems[0] as DigestItem,
+          absolutePath: "/tmp/apollo/notes/planning_2026-03-09_1.md",
+          relativePath: "notes/planning_2026-03-09_1.md",
+        },
+      ],
+      listTopicCandidates: async () => [],
+      generateTopicTargets: async () => [
+        {
+          action: "create_new",
+          shortDescription: "sprint-goals",
+          topic: "Sprint Goals",
+          tags: ["sprint"],
+        },
+      ],
+      prepareTopicMerge: async () => ({
+        targetPath: "/tmp/apollo/planning/sprint-goals.md",
+        relativeTargetPath: "planning/sprint-goals.md",
+        currentContent: "same",
+        proposedContent: "same",
+        isNew: false,
+        hasChanges: false,
+      }),
+      confirmMerge: async () => {
+        throw new Error("confirmMerge should not be called for no-op merges");
+      },
+      writePreparedTopicMerge: async () => {
+        throw new Error("writePreparedTopicMerge should not be called");
+      },
     },
     {
       out: (message) => {
@@ -90,6 +186,8 @@ test("runCli executes digest flow and reports written files", async () => {
   );
 
   expect(exitCode).toBe(0);
-  expect(output[0]).toBe("Wrote 1 digest file(s):");
-  expect(output[1]).toBe("- /tmp/apollo/planning/2026-03-09_1.md");
+  expect(output).toContain(
+    "No topic change: /tmp/apollo/planning/sprint-goals.md",
+  );
+  expect(output).toContain("Confirmed 0 topic merge(s).");
 });
