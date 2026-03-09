@@ -26,6 +26,7 @@ export type DigestItem = {
   source: DigestSource;
   summary: string;
   keyPoints: string[];
+  timeline: string[];
   references: DigestReference[];
 };
 
@@ -103,6 +104,14 @@ export const DIGEST_RESPONSE_SCHEMA = {
               type: "string",
             },
           },
+          timeline: {
+            type: "array",
+            description:
+              "Timeline entries in English. Each entry must use strict ISO format: YYYY-MM-DD - <context>.",
+            items: {
+              type: "string",
+            },
+          },
           references: {
             type: "array",
             items: {
@@ -121,12 +130,21 @@ export const DIGEST_RESPONSE_SCHEMA = {
             },
           },
         },
-        required: ["category", "source", "summary", "keyPoints", "references"],
+        required: [
+          "category",
+          "source",
+          "summary",
+          "keyPoints",
+          "timeline",
+          "references",
+        ],
       },
     },
   },
   required: ["items"],
 } as const;
+
+const TIMELINE_ENTRY_PATTERN = /^\d{4}-\d{2}-\d{2}\s+-\s+.+$/;
 
 export const TOPIC_ROUTING_RESPONSE_SCHEMA = {
   type: "object",
@@ -199,6 +217,30 @@ function normalizeStringArray(input: unknown): string[] {
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
+}
+
+function normalizeTimeline(input: unknown): string[] {
+  if (typeof input === "undefined") {
+    return [];
+  }
+
+  if (!Array.isArray(input)) {
+    throw new Error(
+      "Digest item contained invalid timeline (expected array of timeline entries)",
+    );
+  }
+
+  const timeline = normalizeStringArray(input);
+
+  for (const entry of timeline) {
+    if (!TIMELINE_ENTRY_PATTERN.test(entry)) {
+      throw new Error(
+        "Digest item contained invalid timeline entry (expected format: YYYY-MM-DD - <context>)",
+      );
+    }
+  }
+
+  return [...new Set(timeline)].sort((a, b) => a.localeCompare(b));
 }
 
 function normalizeReferences(input: unknown): DigestReference[] {
@@ -291,6 +333,7 @@ export function parseDigestItemsResponse(content: string): DigestItem[] {
       keyPoints: normalizeStringArray(
         (item as { keyPoints?: unknown }).keyPoints,
       ),
+      timeline: normalizeTimeline((item as { timeline?: unknown }).timeline),
       references: normalizeReferences(
         (item as { references?: unknown }).references,
       ),
@@ -309,6 +352,10 @@ export function renderDigestMarkdown(item: DigestItem): string {
     item.keyPoints.length > 0
       ? item.keyPoints.map((value) => `- ${value}`).join("\n")
       : "- None";
+  const timeline =
+    item.timeline.length > 0
+      ? item.timeline.map((value) => `- ${value}`).join("\n")
+      : "- None";
   const references =
     item.references.length > 0
       ? item.references
@@ -322,6 +369,9 @@ export function renderDigestMarkdown(item: DigestItem): string {
     "",
     "## Key Points",
     keyPoints,
+    "",
+    "## Timeline",
+    timeline,
     "",
     "## References",
     references,
@@ -355,7 +405,9 @@ export async function generateDigestItems(
         "Split the user content into one or more digest items.",
         "Return concise and meaningful digest items based on intent.",
         "Prefer fewer, meaningful digest items and avoid over-fragmenting.",
-        "Always write summary and keyPoints in English, even if the user content is in another language.",
+        "Always write summary, keyPoints, and timeline context in English, even if the user content is in another language.",
+        "Timeline is optional when date information is unknown.",
+        "When timeline entries are present, each entry must use this strict format: YYYY-MM-DD - <context>.",
         "Each item must include a source value from: {{ALLOWED_SOURCES}}.",
         "If references are unknown, return an empty array.",
         "User content:",

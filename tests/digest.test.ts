@@ -19,6 +19,7 @@ test("parseDigestItemsResponse accepts structured items object", () => {
         source: "slack",
         summary: "Plan Q2 launch milestones.",
         keyPoints: ["Draft timeline", "Define dependencies"],
+        timeline: ["2026-04-15 - Draft timeline approved"],
         references: [{ source: "slack", link: "https://example.com/plan" }],
       },
     ],
@@ -32,6 +33,7 @@ test("parseDigestItemsResponse accepts structured items object", () => {
     source: "slack",
     summary: "Plan Q2 launch milestones.",
     keyPoints: ["Draft timeline", "Define dependencies"],
+    timeline: ["2026-04-15 - Draft timeline approved"],
     references: [{ source: "slack", link: "https://example.com/plan" }],
   });
 });
@@ -44,6 +46,7 @@ test("parseDigestItemsResponse rejects invalid source", () => {
         source: "notion",
         summary: "Invalid source sample",
         keyPoints: [],
+        timeline: ["2026-04-15 - Context"],
         references: [],
       },
     ],
@@ -61,6 +64,7 @@ test("parseDigestItemsResponse rejects invalid category", () => {
         category: "ops",
         summary: "Invalid category sample",
         keyPoints: [],
+        timeline: ["2026-04-15 - Context"],
         references: [],
       },
     ],
@@ -77,6 +81,7 @@ test("renderDigestMarkdown always includes required sections", () => {
     source: "wiki",
     summary: "Compare competitor onboarding patterns.",
     keyPoints: ["Analyze signup funnel", "Review activation metrics"],
+    timeline: ["2026-04-20 - Complete onboarding benchmark"],
     references: [{ source: "wiki", link: "https://example.com/onboarding" }],
   };
 
@@ -84,6 +89,7 @@ test("renderDigestMarkdown always includes required sections", () => {
 
   expect(markdown).toContain("## Summary");
   expect(markdown).toContain("## Key Points");
+  expect(markdown).toContain("## Timeline");
   expect(markdown).toContain("## References");
   expect(markdown).toContain("- wiki: https://example.com/onboarding");
 });
@@ -96,6 +102,7 @@ test("parseDigestItemsResponse rejects invalid reference source", () => {
         source: "slack",
         summary: "Reference source should fail",
         keyPoints: [],
+        timeline: ["2026-04-15 - Context"],
         references: [{ source: "drive", link: "https://example.com/doc" }],
       },
     ],
@@ -114,6 +121,7 @@ test("generateDigestItems passes strict structured output format", async () => {
         source: "wiki",
         summary: "Capture rollout constraints.",
         keyPoints: ["Track blockers"],
+        timeline: ["2026-04-15 - Capture rollout constraints"],
         references: [],
       },
     ],
@@ -200,6 +208,7 @@ test("generateDigestItems includes image parts for multimodal prompt", async () 
             source: "wiki",
             summary: "Summary",
             keyPoints: [],
+            timeline: ["2026-04-15 - Context"],
             references: [],
           },
         ],
@@ -278,6 +287,7 @@ test("generateTopicTargets passes candidate slugs and strict schema", async () =
       source: "slack",
       summary: "Plan release tasks",
       keyPoints: ["Prepare QA"],
+      timeline: ["2026-04-15 - Confirm release plan"],
       references: [],
     },
     [
@@ -340,4 +350,41 @@ test("generateTopicTargets passes candidate slugs and strict schema", async () =
 
   expect(promptText).toContain("System routing in English");
   expect(promptText).toContain("release-readiness");
+});
+
+test("parseDigestItemsResponse rejects invalid timeline format", () => {
+  const response = JSON.stringify({
+    items: [
+      {
+        category: "planning",
+        source: "slack",
+        summary: "Timeline should use ISO date with context",
+        keyPoints: ["Keep timeline valid"],
+        timeline: ["April 15 - Kickoff"],
+        references: [],
+      },
+    ],
+  });
+
+  expect(() => parseDigestItemsResponse(response)).toThrow(
+    "Digest item contained invalid timeline entry (expected format: YYYY-MM-DD - <context>)",
+  );
+});
+
+test("parseDigestItemsResponse defaults missing timeline to empty array", () => {
+  const response = JSON.stringify({
+    items: [
+      {
+        category: "planning",
+        source: "slack",
+        summary: "Missing timeline should default",
+        keyPoints: ["Keep schema strict"],
+        references: [],
+      },
+    ],
+  });
+
+  const items = parseDigestItemsResponse(response);
+
+  expect(items[0]?.timeline).toEqual([]);
 });

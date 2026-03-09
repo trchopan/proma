@@ -85,7 +85,7 @@ Stage-1 files include YAML front matter with `category`, `source`, and `merged`.
 Topic files include YAML front matter metadata (`topic`, `category`, `created_at`, `updated_at`, `tags`, `sources`, `source_refs`, `merged_digest_ids`).
 Tag metadata is normalized to lowercase kebab-case, deduplicated, and sorted.
 
-Topic files are canonical-only: each file keeps a single merged `Summary/Key Points/References` view instead of appending chronological digest entries.
+Topic files are canonical-only: each file keeps a single merged `Summary/Key Points/Timeline/References` view instead of appending chronological digest entries.
 Repeated ingestion of already-merged references becomes a no-op (`No topic change`).
 
 After topic targets are selected, the CLI shows a diff preview for each proposed merge and asks for confirmation (`y` to apply, default `N` to skip).
@@ -100,6 +100,8 @@ Each generated markdown file includes:
 
 - `## Summary`
 - `## Key Points`
+- `## Timeline` (always present; use `- None` when no date context is available)
+- Timeline entries, when present, must use strict `YYYY-MM-DD - <context>` format
 - `## References` entries in `- <source>: <link>` format (for example `- slack: https://...`)
 
 Development commands:

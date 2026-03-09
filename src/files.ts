@@ -73,8 +73,11 @@ type ParsedFrontMatter = {
 type CanonicalTopicData = {
   summary: string;
   keyPoints: string[];
+  timeline: string[];
   references: Array<{ source: DigestSource; link: string }>;
 };
+
+const TIMELINE_ENTRY_PATTERN = /^\d{4}-\d{2}-\d{2}\s+-\s+.+$/;
 
 function toDateString(now: Date): string {
   return now.toISOString().slice(0, 10);
@@ -253,6 +256,7 @@ function parseStageOneDigestItem(
       source: frontMatter.source,
       summary: canonical.summary,
       keyPoints: canonical.keyPoints,
+      timeline: canonical.timeline,
       references: canonical.references,
     },
     merged: frontMatter.merged,
@@ -540,11 +544,22 @@ function parseReferenceKey(
   return { source: source as DigestSource, link };
 }
 
+function parseTimelineEntry(value: string): string | null {
+  const normalized = value.trim();
+  if (!normalized || !TIMELINE_ENTRY_PATTERN.test(normalized)) {
+    return null;
+  }
+
+  return normalized;
+}
+
 function extractCanonicalTopicData(body: string): CanonicalTopicData {
   const lines = body.split("\n");
-  let section: "summary" | "keyPoints" | "references" | null = null;
+  let section: "summary" | "keyPoints" | "timeline" | "references" | null =
+    null;
   let summary = "";
   const keyPoints: string[] = [];
+  const timeline: string[] = [];
   const references: Array<{ source: DigestSource; link: string }> = [];
 
   for (const rawLine of lines) {
@@ -556,6 +571,10 @@ function extractCanonicalTopicData(body: string): CanonicalTopicData {
     }
     if (/^##\s+Key Points\s*$/i.test(line)) {
       section = "keyPoints";
+      continue;
+    }
+    if (/^##\s+Timeline\s*$/i.test(line)) {
+      section = "timeline";
       continue;
     }
     if (/^##\s+References\s*$/i.test(line)) {
@@ -574,6 +593,18 @@ function extractCanonicalTopicData(body: string): CanonicalTopicData {
       const bullet = line.match(/^-\s+(.+)$/);
       if (bullet?.[1] && bullet[1] !== "None") {
         keyPoints.push(bullet[1].trim());
+      }
+      continue;
+    }
+
+    if (section === "timeline") {
+      const bullet = line.match(/^-\s+(.+)$/);
+      if (!bullet?.[1] || bullet[1] === "None") {
+        continue;
+      }
+      const parsed = parseTimelineEntry(bullet[1]);
+      if (parsed) {
+        timeline.push(parsed);
       }
       continue;
     }
@@ -601,6 +632,7 @@ function extractCanonicalTopicData(body: string): CanonicalTopicData {
   return {
     summary,
     keyPoints: uniqueOrdered(keyPoints),
+    timeline: [...new Set(timeline)].sort((a, b) => a.localeCompare(b)),
     references: uniqueRefs,
   };
 }
@@ -610,6 +642,10 @@ function buildCanonicalBody(data: CanonicalTopicData): string {
   const keyPoints =
     data.keyPoints.length > 0
       ? data.keyPoints.map((value) => `- ${value}`).join("\n")
+      : "- None";
+  const timeline =
+    data.timeline.length > 0
+      ? data.timeline.map((value) => `- ${value}`).join("\n")
       : "- None";
   const references =
     data.references.length > 0
@@ -624,6 +660,9 @@ function buildCanonicalBody(data: CanonicalTopicData): string {
     "",
     "## Key Points",
     keyPoints,
+    "",
+    "## Timeline",
+    timeline,
     "",
     "## References",
     references,
@@ -649,6 +688,7 @@ function computeDigestIdentity(item: DigestItem): string {
     source: item.source,
     summary: item.summary,
     keyPoints: item.keyPoints,
+    timeline: item.timeline,
   });
 
   return `hash:${createHash("sha1").update(hashInput).digest("hex")}`;
@@ -817,6 +857,9 @@ export async function prepareTopicMerge(
     ...existing.keyPoints,
     ...options.item.keyPoints,
   ]);
+  const mergedTimeline = [
+    ...new Set([...existing.timeline, ...options.item.timeline]),
+  ].sort((a, b) => a.localeCompare(b));
 
   const mergedReferenceMap = new Map<
     string,
@@ -835,6 +878,7 @@ export async function prepareTopicMerge(
   const mergedCanonical: CanonicalTopicData = {
     summary: existing.summary || options.item.summary,
     keyPoints: mergedKeyPoints,
+    timeline: mergedTimeline,
     references: [...mergedReferenceMap.values()],
   };
 

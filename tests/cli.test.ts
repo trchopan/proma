@@ -139,6 +139,7 @@ test("runCli digest writes stage 1 files only", async () => {
       source: "wiki",
       summary: "Plan sprint goals.",
       keyPoints: ["Align scope"],
+      timeline: ["2026-03-09 - Sprint planning kickoff"],
       references: [],
     },
   ];
@@ -184,6 +185,7 @@ test("runCli merge processes pending staged notes", async () => {
       source: "wiki",
       summary: "Plan sprint goals.",
       keyPoints: ["Align scope"],
+      timeline: ["2026-03-09 - Sprint planning kickoff"],
       references: [],
     },
   ];
@@ -309,6 +311,7 @@ test("runCli digest loads markdown images and skips invalid ones with warnings",
       source: "wiki",
       summary: "Plan sprint goals.",
       keyPoints: ["Align scope"],
+      timeline: ["2026-03-09 - Sprint planning kickoff"],
       references: [],
     },
   ];

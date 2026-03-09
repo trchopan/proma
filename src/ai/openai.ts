@@ -177,7 +177,7 @@ export async function createChatCompletion(
 
     if (
       options.responseFormat?.type === "json_schema" &&
-      /response_format|json_schema|not supported|unsupported/i.test(message)
+      /not supported|unsupported/i.test(message)
     ) {
       throw new Error(
         "Selected model does not support Structured Outputs (json_schema). Choose a compatible model.",

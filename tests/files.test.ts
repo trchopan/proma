@@ -48,6 +48,7 @@ test("writeStageOneDigestItems writes to notes directory", async () => {
         source: "slack",
         summary: "Gather customer interview notes.",
         keyPoints: ["Track themes"],
+        timeline: ["2026-03-10 - Interview synthesis starts"],
         references: [{ source: "slack", link: "https://example.com/notes" }],
       },
       {
@@ -55,6 +56,7 @@ test("writeStageOneDigestItems writes to notes directory", async () => {
         source: "wiki",
         summary: "Analyze churn reasons.",
         keyPoints: [],
+        timeline: [],
         references: [],
       },
     ];
@@ -86,6 +88,7 @@ test("listPendingStageOneDigestItems returns only unmerged staged notes", async 
         source: "wiki",
         summary: "Plan sprint goals.",
         keyPoints: ["Align scope"],
+        timeline: ["2026-03-11 - Finalize sprint scope"],
         references: [],
       },
       {
@@ -93,6 +96,7 @@ test("listPendingStageOneDigestItems returns only unmerged staged notes", async 
         source: "slack",
         summary: "Discuss rollout risks.",
         keyPoints: ["Track mitigation"],
+        timeline: ["2026-03-12 - Risk review in standup"],
         references: [],
       },
     ];
@@ -194,6 +198,7 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
         source: "slack",
         summary: "Discussed incident fixes",
         keyPoints: ["Backfill alerts"],
+        timeline: ["2026-03-09 - Incident fixes approved"],
         references: [],
       },
       target,
@@ -209,6 +214,7 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
     expect(plan.proposedContent).toContain("  - 'post-mortem'");
     expect(plan.proposedContent).toContain("## Summary");
     expect(plan.proposedContent).toContain("## Key Points");
+    expect(plan.proposedContent).toContain("## Timeline");
     expect(plan.proposedContent).toContain("## References");
     expect(plan.proposedContent).toContain("source_refs:");
     expect(plan.proposedContent).toContain("merged_digest_ids:");
@@ -252,6 +258,9 @@ test("prepareTopicMerge is idempotent for same reference", async () => {
         "## Key Points",
         "- Existing point",
         "",
+        "## Timeline",
+        "- 2026-03-09 - Policy published",
+        "",
         "## References",
         "- slack: https://example.com/thread",
         "",
@@ -266,6 +275,7 @@ test("prepareTopicMerge is idempotent for same reference", async () => {
         source: "slack",
         summary: "Another wording",
         keyPoints: ["Existing point"],
+        timeline: ["2026-03-09 - Policy published"],
         references: [{ source: "slack", link: "https://example.com/thread" }],
       },
       target: {
@@ -289,6 +299,7 @@ test("prepareTopicMerge is idempotent for same reference", async () => {
         source: "slack",
         summary: "Another wording",
         keyPoints: ["Existing point"],
+        timeline: ["2026-03-09 - Policy published"],
         references: [{ source: "slack", link: "https://example.com/thread" }],
       },
       target: {

@@ -8,7 +8,11 @@ Return concise and meaningful digest items based on intent.
 
 Prefer fewer, meaningful digest items and avoid over-fragmenting.
 
-Always write summary and keyPoints in English, even if the user content is in another language.
+Always write summary, keyPoints, and timeline context in English, even if the user content is in another language.
+
+Timeline is optional when date information is unknown.
+
+When timeline entries are present, each entry must use this strict format: YYYY-MM-DD - <context>.
 
 Each item must include a source value from: {{ALLOWED_SOURCES}}.
 
