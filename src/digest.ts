@@ -30,6 +30,58 @@ export type DigestGenerationOptions = {
 
 type ChatCompletionFn = (options: ChatCompletionOptions) => Promise<string>;
 
+export const DIGEST_RESPONSE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          category: {
+            type: "string",
+            enum: [...DIGEST_CATEGORIES],
+          },
+          source: {
+            type: "string",
+            enum: [...DIGEST_SOURCES],
+          },
+          summary: {
+            type: "string",
+          },
+          keyPoints: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+          references: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                source: {
+                  type: "string",
+                  enum: [...DIGEST_SOURCES],
+                },
+                link: {
+                  type: "string",
+                },
+              },
+              required: ["source", "link"],
+            },
+          },
+        },
+        required: ["category", "source", "summary", "keyPoints", "references"],
+      },
+    },
+  },
+  required: ["items"],
+} as const;
+
 function normalizeCategory(input: unknown): DigestCategory | null {
   if (typeof input !== "string") {
     return null;
@@ -110,20 +162,7 @@ function normalizeReferences(input: unknown): DigestReference[] {
   return references;
 }
 
-function extractJsonBlock(content: string): string {
-  const fenced = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (fenced?.[1]) {
-    return fenced[1];
-  }
-
-  return content;
-}
-
 function parseArrayPayload(payload: unknown): unknown[] {
-  if (Array.isArray(payload)) {
-    return payload;
-  }
-
   if (payload && typeof payload === "object") {
     const digestItems = (payload as { items?: unknown }).items;
     if (Array.isArray(digestItems)) {
@@ -131,17 +170,13 @@ function parseArrayPayload(payload: unknown): unknown[] {
     }
   }
 
-  throw new Error(
-    "Digest response must be a JSON array or an object with an items array",
-  );
+  throw new Error("Digest response must be a JSON object with an items array");
 }
 
 export function parseDigestItemsResponse(content: string): DigestItem[] {
-  const jsonText = extractJsonBlock(content);
-
   let parsed: unknown;
   try {
-    parsed = JSON.parse(jsonText);
+    parsed = JSON.parse(content);
   } catch {
     throw new Error("Digest response was not valid JSON");
   }
@@ -226,12 +261,10 @@ export async function generateDigestItems(
 ): Promise<DigestItem[]> {
   const prompt = [
     "Split the user content into one or more digest items.",
-    "Return ONLY JSON. Use this shape:",
-    '[{"category":"planning|research|discussion","source":"slack|wiki|git|figma","summary":"...","keyPoints":["..."],"references":[{"source":"slack|wiki|git|figma","link":"https://..."}]}]',
-    "Do not include markdown or explanatory text.",
+    "Return concise and meaningful digest items based on intent.",
     "Prefer fewer, meaningful digest items and avoid over-fragmenting.",
     "Each item must include a source value from: slack, wiki, git, figma.",
-    "If references are unknown, return an empty array. Do not use plain strings in references.",
+    "If references are unknown, return an empty array.",
     "User content:",
     inputText,
   ].join("\n\n");
@@ -242,13 +275,22 @@ export async function generateDigestItems(
     messages: [
       {
         role: "system",
-        content: "You are a strict JSON formatter for digest classification.",
+        content:
+          "You classify notes into digest items and must satisfy the provided response schema.",
       },
       {
         role: "user",
         content: prompt,
       },
     ],
+    responseFormat: {
+      type: "json_schema",
+      json_schema: {
+        name: "digest_items",
+        strict: true,
+        schema: DIGEST_RESPONSE_SCHEMA,
+      },
+    },
   });
 
   return parseDigestItemsResponse(responseText);

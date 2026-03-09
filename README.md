@@ -34,6 +34,8 @@ Optional model override:
 bun run index.ts digest --input ./notes.txt --project ./acme --model gpt-4.1-mini
 ```
 
+Note: the digest flow uses OpenAI Structured Outputs (`json_schema`) and fails fast if the selected model does not support it.
+
 `--project` is the root output directory. Output structure:
 
 - `<project>/planning/<YYYY-MM-DD>_<index>.md`
