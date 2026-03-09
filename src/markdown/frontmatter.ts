@@ -7,12 +7,16 @@ export type TopicFrontMatter = {
   updated_at: string;
   tags: string[];
   sources: DigestSource[];
-  source_refs: string[];
   merged_digest_ids: string[];
 };
 
+export type ParsedTopicMetadata = Partial<TopicFrontMatter> & {
+  source_refs?: string[];
+  merged_ingest_ids?: string[];
+};
+
 export type ParsedFrontMatter = {
-  metadata: Partial<TopicFrontMatter>;
+  metadata: ParsedTopicMetadata;
   body: string;
 };
 
@@ -83,13 +87,14 @@ export function parseFrontMatter(markdown: string): ParsedFrontMatter {
     return { metadata: {}, body };
   }
 
-  const metadata: Partial<TopicFrontMatter> = {};
+  const metadata: ParsedTopicMetadata = {};
   const lines = frontMatter.split("\n");
   const arrayKeys = new Set([
     "tags",
     "sources",
-    "source_refs",
     "merged_digest_ids",
+    "merged_ingest_ids",
+    "source_refs",
   ]);
 
   for (let i = 0; i < lines.length; i += 1) {
@@ -112,9 +117,11 @@ export function parseFrontMatter(markdown: string): ParsedFrontMatter {
         if (key === "tags") metadata.tags = parsedInline;
         if (key === "sources")
           metadata.sources = parsedInline as DigestSource[];
-        if (key === "source_refs") metadata.source_refs = parsedInline;
         if (key === "merged_digest_ids")
           metadata.merged_digest_ids = parsedInline;
+        if (key === "merged_ingest_ids")
+          metadata.merged_ingest_ids = parsedInline;
+        if (key === "source_refs") metadata.source_refs = parsedInline;
         continue;
       }
 
@@ -131,8 +138,9 @@ export function parseFrontMatter(markdown: string): ParsedFrontMatter {
 
       if (key === "tags") metadata.tags = values;
       if (key === "sources") metadata.sources = values as DigestSource[];
-      if (key === "source_refs") metadata.source_refs = values;
       if (key === "merged_digest_ids") metadata.merged_digest_ids = values;
+      if (key === "merged_ingest_ids") metadata.merged_ingest_ids = values;
+      if (key === "source_refs") metadata.source_refs = values;
       continue;
     }
 
@@ -161,8 +169,6 @@ export function serializeFrontMatter(metadata: TopicFrontMatter): string {
     ...metadata.tags.map((tag) => `  - ${yamlQuote(tag)}`),
     "sources:",
     ...metadata.sources.map((source) => `  - ${source}`),
-    "source_refs:",
-    ...metadata.source_refs.map((ref) => `  - ${yamlQuote(ref)}`),
     "merged_digest_ids:",
     ...metadata.merged_digest_ids.map((id) => `  - ${yamlQuote(id)}`),
     "---",

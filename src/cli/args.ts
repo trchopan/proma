@@ -1,8 +1,15 @@
 import { DEFAULT_MODEL } from "../config";
+import { REPORT_PERIODS, type ReportPeriod } from "../report";
 
 type ParsedOptions = {
-  values: Map<string, string>;
+  values: Map<string, string[]>;
   flags: Set<string>;
+};
+
+type OptionConfig = {
+  valueOptions: Set<string>;
+  flagOptions: Set<string>;
+  repeatableOptions?: Set<string>;
 };
 
 export type DigestArgs = {
@@ -18,11 +25,22 @@ export type MergeArgs = {
   verbose: boolean;
 };
 
-function parseOptionValues(args: string[]): ParsedOptions {
-  const values = new Map<string, string>();
+export type ReportArgs = {
+  project: string;
+  period: ReportPeriod;
+  input: string[];
+  base: string[];
+  model: string;
+  verbose: boolean;
+};
+
+function parseOptionValues(
+  args: string[],
+  config: OptionConfig,
+): ParsedOptions {
+  const values = new Map<string, string[]>();
   const flags = new Set<string>();
-  const valueOptions = new Set(["--input", "--project", "--model"]);
-  const flagOptions = new Set(["--verbose"]);
+  const repeatableOptions = config.repeatableOptions ?? new Set<string>();
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i] ?? "";
@@ -30,12 +48,12 @@ function parseOptionValues(args: string[]): ParsedOptions {
       continue;
     }
 
-    if (flagOptions.has(arg)) {
+    if (config.flagOptions.has(arg)) {
       flags.add(arg);
       continue;
     }
 
-    if (!valueOptions.has(arg)) {
+    if (!config.valueOptions.has(arg)) {
       throw new Error(`Unknown argument: ${arg}`);
     }
 
@@ -44,7 +62,13 @@ function parseOptionValues(args: string[]): ParsedOptions {
       throw new Error(`Missing value for ${arg}`);
     }
 
-    values.set(arg, value);
+    const current = values.get(arg) ?? [];
+    if (current.length > 0 && !repeatableOptions.has(arg)) {
+      throw new Error(`Duplicate argument: ${arg}`);
+    }
+
+    current.push(value);
+    values.set(arg, current);
     i += 1;
   }
 
@@ -52,10 +76,13 @@ function parseOptionValues(args: string[]): ParsedOptions {
 }
 
 export function parseDigestCommandArgs(args: string[]): DigestArgs {
-  const { values, flags } = parseOptionValues(args);
-  const input = values.get("--input");
-  const project = values.get("--project");
-  const model = values.get("--model") ?? DEFAULT_MODEL;
+  const { values, flags } = parseOptionValues(args, {
+    valueOptions: new Set(["--input", "--project", "--model"]),
+    flagOptions: new Set(["--verbose"]),
+  });
+  const input = values.get("--input")?.[0];
+  const project = values.get("--project")?.[0];
+  const model = values.get("--model")?.[0] ?? DEFAULT_MODEL;
   const verbose = flags.has("--verbose");
 
   if (!input) {
@@ -70,9 +97,12 @@ export function parseDigestCommandArgs(args: string[]): DigestArgs {
 }
 
 export function parseMergeCommandArgs(args: string[]): MergeArgs {
-  const { values, flags } = parseOptionValues(args);
-  const project = values.get("--project");
-  const model = values.get("--model") ?? DEFAULT_MODEL;
+  const { values, flags } = parseOptionValues(args, {
+    valueOptions: new Set(["--project", "--model"]),
+    flagOptions: new Set(["--verbose"]),
+  });
+  const project = values.get("--project")?.[0];
+  const model = values.get("--model")?.[0] ?? DEFAULT_MODEL;
   const verbose = flags.has("--verbose");
 
   if (!project) {
@@ -80,4 +110,48 @@ export function parseMergeCommandArgs(args: string[]): MergeArgs {
   }
 
   return { project, model, verbose };
+}
+
+export function parseReportCommandArgs(args: string[]): ReportArgs {
+  const { values, flags } = parseOptionValues(args, {
+    valueOptions: new Set([
+      "--project",
+      "--period",
+      "--input",
+      "--base",
+      "--model",
+    ]),
+    flagOptions: new Set(["--verbose"]),
+    repeatableOptions: new Set(["--input", "--base"]),
+  });
+
+  const project = values.get("--project")?.[0];
+  const periodValue = values.get("--period")?.[0]?.trim().toLowerCase();
+  const model = values.get("--model")?.[0] ?? DEFAULT_MODEL;
+  const input = values.get("--input") ?? [];
+  const base = values.get("--base") ?? [];
+  const verbose = flags.has("--verbose");
+
+  if (!project) {
+    throw new Error("Missing required argument: --project");
+  }
+
+  if (!periodValue) {
+    throw new Error("Missing required argument: --period");
+  }
+
+  if (!(REPORT_PERIODS as readonly string[]).includes(periodValue)) {
+    throw new Error(
+      `Invalid --period value: ${periodValue} (expected one of: ${REPORT_PERIODS.join(", ")})`,
+    );
+  }
+
+  return {
+    project,
+    period: periodValue as ReportPeriod,
+    input,
+    base,
+    model,
+    verbose,
+  };
 }

@@ -9,7 +9,9 @@ const SYSTEM_HEADING = "# {{SYSTEM}}";
 const USER_HEADING = "# {{USER}}";
 const VARIABLE_PATTERN = /{{([A-Z0-9_]+)}}/g;
 
-export function resolveBuiltInPromptPath(kind: "digest" | "merge"): string {
+export function resolveBuiltInPromptPath(
+  kind: "digest" | "merge" | "report",
+): string {
   return path.resolve(import.meta.dir, "..", "prompts", `${kind}.md`);
 }
 
