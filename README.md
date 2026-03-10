@@ -1,15 +1,13 @@
 # proma
 
-## Use proma in another repository
+## Get started
 
 Install as a dependency:
 
-```json
-{
-  "dependencies": {
-    "proma": "^0.1.0"
-  }
-}
+```bash
+npm install @trchopan/proma
+# or
+bun add @trchopan/proma
 ```
 
 Create `proma.config.js` in your repository root:
@@ -256,3 +254,7 @@ Git hook:
 ```
 
 This project was created using `bun init` in bun v1.3.9. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+
+## License
+
+MIT. See `LICENSE`.
