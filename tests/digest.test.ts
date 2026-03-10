@@ -173,7 +173,7 @@ test("generateDigestItems passes strict structured output format", async () => {
       .join("\n") ?? "";
 
   expect(promptText).toContain("You classify notes into digest items");
-  expect(promptText).toContain("slack, wiki, git, figma, file");
+  expect(promptText).toContain("slack, wiki, git, document");
   expect(promptText).toContain("Some input");
 });
 

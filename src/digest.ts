@@ -9,13 +9,7 @@ export const DIGEST_CATEGORIES = [
   "discussion",
 ] as const;
 
-export const DIGEST_SOURCES = [
-  "slack",
-  "wiki",
-  "git",
-  "figma",
-  "file",
-] as const;
+export const DIGEST_SOURCES = ["slack", "wiki", "git", "document"] as const;
 
 export type DigestCategory = (typeof DIGEST_CATEGORIES)[number];
 export type DigestSource = (typeof DIGEST_SOURCES)[number];
@@ -199,12 +193,15 @@ function normalizeSource(input: unknown): DigestSource | null {
 
   const value = input.trim().toLowerCase();
 
+  if (value === "figma" || value === "file") {
+    return "document";
+  }
+
   if (
     value === "slack" ||
     value === "wiki" ||
     value === "git" ||
-    value === "figma" ||
-    value === "file"
+    value === "document"
   ) {
     return value;
   }

@@ -59,7 +59,7 @@ test("loadPromptRegistry applies plugin patches from proma.config.ts", async () 
   const built = registry.digest.buildPrompt({
     inputText: "hello",
     images: [],
-    allowedSources: ["slack", "wiki", "git", "figma", "file"],
+    allowedSources: ["slack", "wiki", "git", "document"],
   });
 
   const system = built.messages.find((message) => message.role === "system");
