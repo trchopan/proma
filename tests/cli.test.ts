@@ -15,7 +15,7 @@ import type { DigestItem } from "../src/digest";
 test("parseDigestCommandArgs parses required and optional args", () => {
   const parsed = parseDigestCommandArgs([
     "--input",
-    "notes.txt",
+    "raw.md",
     "--project",
     "apollo",
     "--model",
@@ -23,7 +23,7 @@ test("parseDigestCommandArgs parses required and optional args", () => {
   ]);
 
   expect(parsed).toEqual({
-    input: "notes.txt",
+    input: "raw.md",
     project: "apollo",
     model: "gpt-4.1",
     verbose: false,
@@ -33,14 +33,14 @@ test("parseDigestCommandArgs parses required and optional args", () => {
 test("parseDigestCommandArgs parses --verbose flag", () => {
   const parsed = parseDigestCommandArgs([
     "--input",
-    "notes.txt",
+    "raw.md",
     "--project",
     "apollo",
     "--verbose",
   ]);
 
   expect(parsed).toEqual({
-    input: "notes.txt",
+    input: "raw.md",
     project: "apollo",
     model: "gpt-5.2",
     verbose: true,
