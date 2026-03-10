@@ -32,6 +32,16 @@ function sampleContext(kind: ProcessingKind): unknown {
   };
 }
 
+/**
+ * Validates that a composed prompt registry satisfies required runtime
+ * contracts before CLI command execution.
+ *
+ * This enforces that all required operations exist and that each operation
+ * still returns Structured Outputs (`json_schema`) after plugin patches or
+ * overrides.
+ *
+ * Throws a descriptive `Error` when any contract check fails.
+ */
 export function validatePromptRegistry(registry: PromptRegistry): void {
   for (const kind of REQUIRED_KINDS) {
     const operation = registry[kind];

@@ -14,6 +14,8 @@ Install as a dependency:
 
 Create `proma.config.js` in your repository root:
 
+For full plugin architecture, recipes, and troubleshooting, see `PLUGIN_SYSTEM.md`.
+
 ```js
 export default {
   plugins: [
@@ -86,7 +88,11 @@ Prompting and schema control is centralized in `src/prompting/`:
 - `src/prompting/load.ts` loads optional user plugins from `proma.config.ts|js|mjs`
 - `src/prompting/validate.ts` validates composed registry contracts at startup
 
+Deep plugin documentation: `PLUGIN_SYSTEM.md`
+
 Create `proma.config.ts` (or `.js`/`.mjs`) to customize prompting behavior via plugins:
+
+Need advanced examples (`overrideOperation`, multi-plugin order, troubleshooting)? See `PLUGIN_SYSTEM.md`.
 
 ```ts
 export default {
@@ -128,13 +134,13 @@ export OPENAI_API_KEY="your_api_key"
 Run stage 1 (`digest`):
 
 ```bash
-proma digest --input ./notes.txt --project ./acme
+proma digest --input ./raw.md --project ./acme
 ```
 
 Run stage 1 with verbose debugging logs:
 
 ```bash
-proma digest --input ./notes.txt --project ./acme --verbose
+proma digest --input ./raw.md --project ./acme --verbose
 ```
 
 Run stage 2/3 (`merge`):
@@ -168,7 +174,7 @@ proma report --project ./acme --period weekly \
 Optional model override:
 
 ```bash
-proma digest --input ./notes.txt --project ./acme --model gpt-4.1-mini
+proma digest --input ./raw.md --project ./acme --model gpt-4.1-mini
 ```
 
 Note: the digest flow uses OpenAI Structured Outputs (`json_schema`) and fails fast if the selected model does not support it.

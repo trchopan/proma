@@ -19,6 +19,24 @@ function isPromaConfig(value: unknown): value is PromaConfig {
   return typeof plugins === "undefined" || Array.isArray(plugins);
 }
 
+/**
+ * Loads and composes the prompt registry for CLI execution.
+ *
+ * Behavior:
+ * - Starts from built-in operations (`digest`, `merge`, `report`).
+ * - If `configFileName` is provided, only that file name is checked.
+ * - Otherwise config discovery uses first-match order:
+ *   `proma.config.ts` -> `proma.config.js` -> `proma.config.mjs`.
+ * - If no config file exists, built-ins are returned unchanged.
+ * - Plugins run in declaration order and each `setup` is awaited.
+ *
+ * Throws when config shape is invalid, plugin entries are malformed, or a
+ * plugin throws/rejects during setup.
+ *
+ * @param cwd Directory used to resolve config candidates.
+ * @param configFileName Optional explicit config filename to load.
+ * @returns Final composed registry used by command execution.
+ */
 export async function loadPromptRegistry(
   cwd = process.cwd(),
   configFileName?: string,
