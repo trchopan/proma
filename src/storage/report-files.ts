@@ -33,6 +33,36 @@ type WrittenReportFile = {
 
 const REPORT_INPUT_CATEGORIES = ["planning", "research", "discussion"];
 
+function isReportInputCategory(value: string): boolean {
+  return REPORT_INPUT_CATEGORIES.includes(value);
+}
+
+function inferTopicCategoryFromPath(
+  projectRoot: string,
+  absolutePath: string,
+): string {
+  const topicsRoot = path.join(projectRoot, "topics");
+  const relativeToTopics = path.relative(topicsRoot, absolutePath);
+  if (
+    relativeToTopics.startsWith("..") ||
+    path.isAbsolute(relativeToTopics) ||
+    relativeToTopics.length === 0
+  ) {
+    throw new Error(
+      `Invalid --input file (must be under <project>/topics/<category>/): ${absolutePath}`,
+    );
+  }
+
+  const [category] = relativeToTopics.split(path.sep);
+  if (!category || !isReportInputCategory(category)) {
+    throw new Error(
+      `Invalid --input file category (must be planning|research|discussion): ${absolutePath}`,
+    );
+  }
+
+  return category;
+}
+
 function toIsoDate(now: Date): string {
   return now.toISOString().slice(0, 10);
 }
@@ -74,13 +104,14 @@ export async function resolveReportInputFiles(
     for (const filePath of resolved) {
       ensureMarkdownPath(filePath, "--input");
       await ensureExistingFile(filePath, "--input");
+      inferTopicCategoryFromPath(projectRoot, filePath);
     }
     return resolved;
   }
 
   const discovered: string[] = [];
   for (const category of REPORT_INPUT_CATEGORIES) {
-    const categoryDir = path.join(projectRoot, category);
+    const categoryDir = path.join(projectRoot, "topics", category);
     let entries: string[] = [];
     try {
       entries = await readdir(categoryDir);
@@ -149,7 +180,8 @@ async function loadInputContext(
   const parsed = parseFrontMatter(markdown);
   const canonical = extractCanonicalTopicData(parsed.body);
   const categoryHint =
-    parsed.metadata.category ?? path.basename(path.dirname(absolutePath));
+    parsed.metadata.category ??
+    inferTopicCategoryFromPath(projectRoot, absolutePath);
   const topicHint =
     parsed.metadata.topic?.trim() || path.basename(absolutePath, ".md");
 

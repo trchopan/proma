@@ -123,7 +123,7 @@ test("listPendingStageOneDigestItems returns only unmerged staged notes", async 
 
 test("listTopicCandidates reads topic front matter", async () => {
   await withTempDir(async (dir) => {
-    const topicDir = path.join(dir, "planning");
+    const topicDir = path.join(dir, "topics", "planning");
     await mkdir(topicDir, { recursive: true });
     await Bun.write(
       path.join(topicDir, "release-readiness.md"),
@@ -182,7 +182,9 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
       now: new Date("2026-03-09T10:00:00Z"),
     });
 
-    expect(plan.relativeTargetPath).toBe("discussion/incident-response.md");
+    expect(plan.relativeTargetPath).toBe(
+      "topics/discussion/incident-response.md",
+    );
     expect(plan.proposedContent).toContain("topic: 'Incident Response'");
     expect(plan.proposedContent).toContain(
       "updated_at: '2026-03-09T10:00:00.000Z'",
@@ -200,7 +202,7 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
 
     await writePreparedTopicMerge(plan);
     const written = await Bun.file(
-      path.join(dir, "discussion", "incident-response.md"),
+      path.join(dir, "topics", "discussion", "incident-response.md"),
     ).text();
     expect(written).toContain("## Summary");
   });
@@ -208,7 +210,7 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
 
 test("prepareTopicMerge is idempotent for same reference", async () => {
   await withTempDir(async (dir) => {
-    const topicDir = path.join(dir, "planning");
+    const topicDir = path.join(dir, "topics", "planning");
     await mkdir(topicDir, { recursive: true });
     const existingPath = path.join(topicDir, "release-policy.md");
 
@@ -299,7 +301,7 @@ test("slugifyTopic normalizes to kebab-case", () => {
 
 test("resolveReportInputFiles uses explicit --input values only", async () => {
   await withTempDir(async (dir) => {
-    const planningFile = path.join(dir, "planning", "release.md");
+    const planningFile = path.join(dir, "topics", "planning", "release.md");
     await mkdir(path.dirname(planningFile), { recursive: true });
     await Bun.write(planningFile, "# planning");
 
@@ -308,11 +310,23 @@ test("resolveReportInputFiles uses explicit --input values only", async () => {
   });
 });
 
-test("resolveReportInputFiles falls back to planning/research/discussion", async () => {
+test("resolveReportInputFiles rejects explicit legacy non-topics path", async () => {
   await withTempDir(async (dir) => {
-    const planningFile = path.join(dir, "planning", "a.md");
-    const researchFile = path.join(dir, "research", "b.md");
-    const discussionFile = path.join(dir, "discussion", "c.md");
+    const legacyFile = path.join(dir, "planning", "release.md");
+    await mkdir(path.dirname(legacyFile), { recursive: true });
+    await Bun.write(legacyFile, "# planning");
+
+    await expect(resolveReportInputFiles(dir, [legacyFile])).rejects.toThrow(
+      "Invalid --input file (must be under <project>/topics/<category>/)",
+    );
+  });
+});
+
+test("resolveReportInputFiles falls back to topics/planning|research|discussion", async () => {
+  await withTempDir(async (dir) => {
+    const planningFile = path.join(dir, "topics", "planning", "a.md");
+    const researchFile = path.join(dir, "topics", "research", "b.md");
+    const discussionFile = path.join(dir, "topics", "discussion", "c.md");
 
     await mkdir(path.dirname(planningFile), { recursive: true });
     await mkdir(path.dirname(researchFile), { recursive: true });
@@ -342,7 +356,7 @@ test("resolveBaseReportFiles falls back to reports directory", async () => {
 
 test("loadReportContext parses input and base report context", async () => {
   await withTempDir(async (dir) => {
-    const inputPath = path.join(dir, "planning", "release.md");
+    const inputPath = path.join(dir, "topics", "planning", "release.md");
     const basePath = path.join(dir, "reports", "2026-03-08_weekly.md");
     await mkdir(path.dirname(inputPath), { recursive: true });
     await mkdir(path.dirname(basePath), { recursive: true });
@@ -393,7 +407,7 @@ test("loadReportContext parses input and base report context", async () => {
     expect(context.period).toBe("weekly");
     expect(context.inputs).toEqual([
       {
-        path: "planning/release.md",
+        path: "topics/planning/release.md",
         category: "planning",
         topic: "Release Readiness",
         summary: "Release status update",
@@ -414,7 +428,7 @@ test("writeReportFile writes front matter and deterministic name", async () => {
       projectRoot: dir,
       period: "weekly",
       model: "gpt-5.2",
-      inputFiles: [path.join(dir, "planning", "release.md")],
+      inputFiles: [path.join(dir, "topics", "planning", "release.md")],
       baseFiles: [path.join(dir, "reports", "2026-03-01_weekly.md")],
       markdown: "# Weekly Report\n",
       now: new Date("2026-03-09T10:00:00.000Z"),

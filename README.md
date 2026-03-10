@@ -193,8 +193,8 @@ Run report generation with explicit topic inputs and base reports:
 
 ```bash
 proma report --project ./acme --period weekly \
-  --input ./acme/planning/release-readiness.md \
-  --input ./acme/discussion/incident-response.md \
+  --input ./acme/topics/planning/release-readiness.md \
+  --input ./acme/topics/discussion/incident-response.md \
   --base ./acme/reports/2026-03-01_weekly.md \
   --base ./acme/reports/2026-03-08_weekly.md
 ```
@@ -210,13 +210,13 @@ Note: the digest flow uses OpenAI Structured Outputs (`json_schema`) and fails f
 `--project` is the root output directory. Output structure:
 
 - Stage 1 raw digests: `<project>/notes/<category>_<YYYY-MM-DD>_<index>.md`
-- Stage 2/3 topic files from `merge`: `<project>/<category>/<topic-slug>.md`
+- Stage 2/3 topic files from `merge`: `<project>/topics/<category>/<topic-slug>.md`
 - Reports: `<project>/reports/<YYYY-MM-DD>_<period>.md` (collision fallback: `_2`, `_3`, ...)
 
 Report file behavior:
 
 - `--period` is optional; default is `weekly`. Valid values: `daily`, `weekly`, `bi-weekly`, `monthly`.
-- Repeat `--input` to target specific markdown files; when omitted, the CLI scans all markdown files under `<project>/planning`, `<project>/research`, and `<project>/discussion`.
+- Repeat `--input` to target specific markdown files; when omitted, the CLI scans all markdown files under `<project>/topics/planning`, `<project>/topics/research`, and `<project>/topics/discussion`.
 - Repeat `--base` to provide specific previous reports; when omitted, the CLI loads all markdown files under `<project>/reports`.
 - Report files include YAML front matter with `period`, `generated_at`, `model`, `input_files`, and `base_reports`.
 
