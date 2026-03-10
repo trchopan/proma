@@ -405,7 +405,14 @@ export default {
           version: "v2",
           buildPrompt: () => ({
             messages: [],
-            responseFormat: { type: "json_object" },
+            responseFormat: {
+              type: "json_schema",
+              json_schema: {
+                name: "",
+                strict: true,
+                schema: { type: "object" },
+              },
+            },
           }),
         });
       },

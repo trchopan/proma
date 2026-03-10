@@ -228,7 +228,12 @@ test("createChatCompletion dry-run does not send request and prints payload", as
         dryRun: true,
         messages: [{ role: "user", content: "Hello" }],
         responseFormat: {
-          type: "json_object",
+          type: "json_schema",
+          json_schema: {
+            name: "dry_run_response",
+            strict: true,
+            schema: { type: "object" },
+          },
         },
       }),
     ).rejects.toThrow("Dry run: request not sent");

@@ -318,7 +318,7 @@ test("runCli digest writes stage 1 files only", async () => {
   );
 
   expect(exitCode).toBe(0);
-  expect(output).toContain("Wrote 1 stage 1 digest file(s):");
+  expect(output).toContain("Wrote 1 digest file(s):");
 });
 
 test("runCli digest with --dry-run does not write stage 1 files", async () => {
@@ -354,9 +354,7 @@ test("runCli digest with --dry-run does not write stage 1 files", async () => {
   );
 
   expect(exitCode).toBe(0);
-  expect(output).toContain(
-    "Dry run complete. Would write 1 stage 1 digest file(s).",
-  );
+  expect(output).toContain("Dry run complete. Would write 1 digest file(s).");
 });
 
 test("runCli merge processes pending staged notes", async () => {
@@ -419,7 +417,7 @@ test("runCli merge processes pending staged notes", async () => {
   );
 
   expect(exitCode).toBe(0);
-  expect(output).toContain("Found 1 pending stage 1 digest file(s).");
+  expect(output).toContain("Found 1 pending digest file(s).");
   expect(output).toContain(
     "No topic change: /tmp/apollo/topics/planning/sprint-goals.md",
   );
