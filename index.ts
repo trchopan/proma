@@ -1,7 +1,12 @@
-import { runCli } from "./src/cli";
-
-const exitCode = await runCli(Bun.argv.slice(2));
-
-if (exitCode !== 0) {
-  process.exit(exitCode);
-}
+export {
+  parseDigestCommandArgs,
+  parseMergeCommandArgs,
+  parseReportCommandArgs,
+  renderDiffPreview,
+  runCli,
+} from "./src/cli";
+export type {
+  PromaConfig,
+  PromptPlugin,
+  PromptPluginApi,
+} from "./src/prompting/plugin";

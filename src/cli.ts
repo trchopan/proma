@@ -6,6 +6,8 @@ import {
   type MergeArgs,
   parseDigestCommandArgs,
   parseMergeCommandArgs,
+  parseReportCommandArgs,
+  type ReportArgs,
 } from "./cli/args";
 import {
   colorizeDiffPreview,
@@ -21,28 +23,42 @@ import {
 import {
   listPendingStageOneDigestItems,
   listTopicCandidates,
+  loadReportContext,
   markStageOneDigestItemMerged,
   prepareTopicMerge,
+  resolveBaseReportFiles,
+  resolveReportInputFiles,
   writePreparedTopicMerge,
+  writeReportFile,
   writeStageOneDigestItems,
 } from "./files";
 import { createLogger, type Logger } from "./logging";
-import {
-  loadPromptTemplateFromFile,
-  resolveBuiltInPromptPath,
-} from "./prompt-template";
+import { loadPromptRegistry } from "./prompting/load";
+import type { PromptRegistry } from "./prompting/types";
+import { validatePromptRegistry } from "./prompting/validate";
+import { generateReport, renderReportMarkdown } from "./report";
 
-export { parseDigestCommandArgs, parseMergeCommandArgs, renderDiffPreview };
+export {
+  parseDigestCommandArgs,
+  parseMergeCommandArgs,
+  parseReportCommandArgs,
+  renderDiffPreview,
+};
 
 type CliDependencies = {
   generateDigestItems: typeof generateDigestItems;
   generateTopicTargets: typeof generateTopicTargets;
+  generateReport: typeof generateReport;
   writeStageOneDigestItems: typeof writeStageOneDigestItems;
   listPendingStageOneDigestItems: typeof listPendingStageOneDigestItems;
   markStageOneDigestItemMerged: typeof markStageOneDigestItemMerged;
   listTopicCandidates: typeof listTopicCandidates;
   prepareTopicMerge: typeof prepareTopicMerge;
   writePreparedTopicMerge: typeof writePreparedTopicMerge;
+  resolveReportInputFiles: typeof resolveReportInputFiles;
+  resolveBaseReportFiles: typeof resolveBaseReportFiles;
+  loadReportContext: typeof loadReportContext;
+  writeReportFile: typeof writeReportFile;
   readTextFile: (filePath: string) => Promise<string>;
   confirmMerge: (targetPath: string, preview: string) => Promise<boolean>;
   createLogger: (options: {
@@ -51,6 +67,11 @@ type CliDependencies = {
     out: (message: string) => void;
     err: (message: string) => void;
   }) => Promise<Logger>;
+  loadPromptRegistry: (
+    cwd?: string,
+    configFileName?: string,
+  ) => Promise<PromptRegistry>;
+  validatePromptRegistry: (registry: PromptRegistry) => void;
 };
 
 type CliIO = {
@@ -65,8 +86,9 @@ function defaultReadTextFile(filePath: string): Promise<string> {
 function usage(): string {
   return [
     "Usage:",
-    "  bun run index.ts digest --input <file> --project <output-root> [--model <model>] [--verbose]",
-    "  bun run index.ts merge --project <output-root> [--model <model>] [--verbose]",
+    "  proma digest --input <file> --project <output-root> [--model <model>] [--verbose]",
+    "  proma merge --project <output-root> [--model <model>] [--verbose]",
+    "  proma report --project <output-root> [--period <daily|weekly|bi-weekly|monthly>] [--input <file> ...] [--base <file> ...] [--model <model>] [--verbose]",
   ].join("\n");
 }
 
@@ -94,12 +116,10 @@ async function runDigestCommand(
   parsed: DigestArgs,
   deps: CliDependencies,
   logger: Logger,
+  promptRegistry: PromptRegistry,
 ): Promise<number> {
   const inputPath = path.resolve(parsed.input);
   const projectRoot = path.resolve(parsed.project);
-  const digestPromptTemplate = await loadPromptTemplateFromFile(
-    resolveBuiltInPromptPath("digest"),
-  );
 
   await logger.progress("digest.read_input", `Reading input: ${inputPath}`);
   const inputText = await deps.readTextFile(inputPath);
@@ -134,7 +154,7 @@ async function runDigestCommand(
     {
       model: parsed.model,
       logger,
-      promptTemplate: digestPromptTemplate,
+      promptRegistry,
     },
   );
 
@@ -168,11 +188,9 @@ async function runMergeCommand(
   parsed: MergeArgs,
   deps: CliDependencies,
   logger: Logger,
+  promptRegistry: PromptRegistry,
 ): Promise<number> {
   const projectRoot = path.resolve(parsed.project);
-  const mergePromptTemplate = await loadPromptTemplateFromFile(
-    resolveBuiltInPromptPath("merge"),
-  );
   await logger.progress(
     "merge.list_pending",
     "Scanning pending staged notes...",
@@ -207,7 +225,7 @@ async function runMergeCommand(
       {
         model: parsed.model,
         logger,
-        promptTemplate: mergePromptTemplate,
+        promptRegistry,
       },
     );
     await logger.debug("merge.targets", "Generated topic routing targets", {
@@ -288,6 +306,71 @@ async function runMergeCommand(
   return 0;
 }
 
+async function runReportCommand(
+  parsed: ReportArgs,
+  deps: CliDependencies,
+  logger: Logger,
+  promptRegistry: PromptRegistry,
+): Promise<number> {
+  const projectRoot = path.resolve(parsed.project);
+
+  await logger.progress(
+    "report.resolve_input",
+    "Resolving report input files...",
+  );
+  const inputFiles = await deps.resolveReportInputFiles(
+    projectRoot,
+    parsed.input,
+  );
+  await logger.progress(
+    "report.input_count",
+    `Resolved ${inputFiles.length} report input file(s).`,
+  );
+
+  await logger.progress(
+    "report.resolve_base",
+    "Resolving base report files...",
+  );
+  const baseFiles = await deps.resolveBaseReportFiles(projectRoot, parsed.base);
+  await logger.progress(
+    "report.base_count",
+    `Resolved ${baseFiles.length} base report file(s).`,
+  );
+
+  await logger.progress("report.load_context", "Loading report context...");
+  const context = await deps.loadReportContext({
+    projectRoot,
+    period: parsed.period,
+    inputFiles,
+    baseFiles,
+  });
+
+  await logger.progress("report.generate", "Generating report...");
+  const generated = await deps.generateReport(context, {
+    model: parsed.model,
+    logger,
+    promptRegistry,
+  });
+
+  await logger.progress("report.write", "Writing report file...");
+  const markdown = renderReportMarkdown(generated);
+  const written = await deps.writeReportFile({
+    projectRoot,
+    period: parsed.period,
+    model: parsed.model,
+    inputFiles,
+    baseFiles,
+    markdown,
+  });
+
+  await logger.progress(
+    "report.complete",
+    `Generated report: ${written.absolutePath}`,
+  );
+
+  return 0;
+}
+
 export async function runCli(
   argv: string[],
   dependencies: Partial<CliDependencies> = {},
@@ -296,15 +379,22 @@ export async function runCli(
   const deps: CliDependencies = {
     generateDigestItems,
     generateTopicTargets,
+    generateReport,
     writeStageOneDigestItems,
     listPendingStageOneDigestItems,
     markStageOneDigestItemMerged,
     listTopicCandidates,
     prepareTopicMerge,
     writePreparedTopicMerge,
+    resolveReportInputFiles,
+    resolveBaseReportFiles,
+    loadReportContext,
+    writeReportFile,
     readTextFile: defaultReadTextFile,
     confirmMerge: defaultConfirmMerge,
     createLogger,
+    loadPromptRegistry,
+    validatePromptRegistry,
     ...dependencies,
   };
 
@@ -320,7 +410,7 @@ export async function runCli(
     : argv;
 
   const command = normalizedArgv[0];
-  if (command !== "digest" && command !== "merge") {
+  if (command !== "digest" && command !== "merge" && command !== "report") {
     terminal.err(`Unknown command: ${command ?? "(none)"}`);
     terminal.err(usage());
     return 1;
@@ -341,9 +431,31 @@ export async function runCli(
   await logger.info("cli.log_path", `Writing logs to ${logger.logFilePath}`);
 
   try {
+    const promptRegistry = await deps.loadPromptRegistry(process.cwd());
+    deps.validatePromptRegistry(promptRegistry);
+
     if (command === "digest") {
       const parsed = parseDigestCommandArgs(normalizedArgv.slice(1));
-      const exitCode = await runDigestCommand(parsed, deps, logger);
+      const exitCode = await runDigestCommand(
+        parsed,
+        deps,
+        logger,
+        promptRegistry,
+      );
+      await logger.debug("cli.complete", "Command completed successfully", {
+        command,
+      });
+      return exitCode;
+    }
+
+    if (command === "report") {
+      const parsed = parseReportCommandArgs(normalizedArgv.slice(1));
+      const exitCode = await runReportCommand(
+        parsed,
+        deps,
+        logger,
+        promptRegistry,
+      );
       await logger.debug("cli.complete", "Command completed successfully", {
         command,
       });
@@ -351,7 +463,12 @@ export async function runCli(
     }
 
     const parsed = parseMergeCommandArgs(normalizedArgv.slice(1));
-    const exitCode = await runMergeCommand(parsed, deps, logger);
+    const exitCode = await runMergeCommand(
+      parsed,
+      deps,
+      logger,
+      promptRegistry,
+    );
     await logger.debug("cli.complete", "Command completed successfully", {
       command,
     });
