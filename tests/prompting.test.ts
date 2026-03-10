@@ -150,17 +150,24 @@ test("executePromptOperation sends built response format and parses output", asy
   });
 });
 
-test("validatePromptRegistry rejects non-json-schema operations", () => {
+test("validatePromptRegistry rejects missing json_schema metadata", () => {
   const registry = createBuiltInPromptRegistry();
   registry.report = {
     ...registry.report,
     buildPrompt: () => ({
       messages: [{ role: "system", content: "x" }],
-      responseFormat: { type: "json_object" },
+      responseFormat: {
+        type: "json_schema",
+        json_schema: {
+          name: "",
+          strict: true,
+          schema: { type: "object" },
+        },
+      },
     }),
   };
 
   expect(() => validatePromptRegistry(registry)).toThrow(
-    "must use json_schema response format",
+    "json_schema.name must be a non-empty string",
   );
 });

@@ -53,13 +53,7 @@ type JsonSchemaResponseFormat = {
   };
 };
 
-type JsonObjectResponseFormat = {
-  type: "json_object";
-};
-
-export type ChatResponseFormat =
-  | JsonSchemaResponseFormat
-  | JsonObjectResponseFormat;
+export type ChatResponseFormat = JsonSchemaResponseFormat;
 
 type OpenAiChoice = {
   message?: {

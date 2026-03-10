@@ -167,15 +167,12 @@ async function runDigestCommand(
   if (parsed.dryRun) {
     await logger.progress(
       "digest.dry_run",
-      `Dry run complete. Would write ${items.length} stage 1 digest file(s).`,
+      `Dry run complete. Would write ${items.length} digest file(s).`,
     );
     return 0;
   }
 
-  await logger.progress(
-    "digest.write_stage_one",
-    "Writing stage 1 digest notes...",
-  );
+  await logger.progress("digest.write_stage_one", "Writing digest notes...");
   const stagedItems = await deps.writeStageOneDigestItems({
     projectRoot,
     items,
@@ -183,7 +180,7 @@ async function runDigestCommand(
 
   await logger.progress(
     "digest.write_complete",
-    `Wrote ${stagedItems.length} stage 1 digest file(s):`,
+    `Wrote ${stagedItems.length} digest file(s):`,
   );
   for (const stagedItem of stagedItems) {
     await logger.info("digest.stage_file", `- ${stagedItem.absolutePath}`, {
@@ -208,7 +205,7 @@ async function runMergeCommand(
   const stagedItems = await deps.listPendingStageOneDigestItems(projectRoot);
   await logger.progress(
     "merge.pending_count",
-    `Found ${stagedItems.length} pending stage 1 digest file(s).`,
+    `Found ${stagedItems.length} pending digest file(s).`,
   );
 
   const mergedFiles: string[] = [];
