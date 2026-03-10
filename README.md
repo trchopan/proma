@@ -1,5 +1,7 @@
 # proma
 
+Source: ![github](https://github.com/trchopan/proma)
+
 ## Get started
 
 Install as a dependency:
@@ -69,6 +71,34 @@ To install dependencies:
 
 ```bash
 bun install
+```
+
+Development commands:
+
+```bash
+# lint
+bun run lint
+bun run lint:fix
+
+# format
+bun run format
+bun run format:check
+
+# tests
+bun run test
+bun run test:watch
+
+# type checking
+bun run typecheck
+
+# run all checks
+bun run check
+```
+
+Then use the entry point to run:
+
+```bash
+bun run ./bin/proma.ts
 ```
 
 ## Digest CLI feature
@@ -223,37 +253,6 @@ Each generated markdown file includes:
 - Timeline entries, when present, must use strict `YYYY-MM-DD - <context>` format
 - `## References` entries in `- <source>: <link>` format (for example `- slack: https://...`)
 - Allowed digest/reference sources: `slack`, `wiki`, `git`, `figma`, `file` (use `file` for document links such as Google Drive)
-
-Development commands:
-
-```bash
-# lint
-bun run lint
-bun run lint:fix
-
-# format
-bun run format
-bun run format:check
-
-# tests
-bun run test
-bun run test:watch
-
-# type checking
-bun run typecheck
-
-# run all checks
-bun run check
-```
-
-Git hook:
-
-```bash
-# installed automatically on bun install via "prepare"
-# pre-commit runs lint-staged + typecheck
-```
-
-This project was created using `bun init` in bun v1.3.9. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
 
 ## License
 
