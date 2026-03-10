@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   parseDigestCommandArgs,
   parseMergeCommandArgs,
+  parseReportCommandArgs,
   renderDiffPreview,
   runCli,
 } from "../src/cli";
@@ -14,7 +15,7 @@ import type { DigestItem } from "../src/digest";
 test("parseDigestCommandArgs parses required and optional args", () => {
   const parsed = parseDigestCommandArgs([
     "--input",
-    "notes.txt",
+    "raw.md",
     "--project",
     "apollo",
     "--model",
@@ -22,7 +23,7 @@ test("parseDigestCommandArgs parses required and optional args", () => {
   ]);
 
   expect(parsed).toEqual({
-    input: "notes.txt",
+    input: "raw.md",
     project: "apollo",
     model: "gpt-4.1",
     verbose: false,
@@ -32,14 +33,14 @@ test("parseDigestCommandArgs parses required and optional args", () => {
 test("parseDigestCommandArgs parses --verbose flag", () => {
   const parsed = parseDigestCommandArgs([
     "--input",
-    "notes.txt",
+    "raw.md",
     "--project",
     "apollo",
     "--verbose",
   ]);
 
   expect(parsed).toEqual({
-    input: "notes.txt",
+    input: "raw.md",
     project: "apollo",
     model: "gpt-5.2",
     verbose: true,
@@ -69,6 +70,53 @@ test("parseMergeCommandArgs parses --verbose flag", () => {
     model: "gpt-5.2",
     verbose: true,
   });
+});
+
+test("parseReportCommandArgs parses required and repeatable args", () => {
+  const parsed = parseReportCommandArgs([
+    "--project",
+    "apollo",
+    "--period",
+    "weekly",
+    "--input",
+    "topics/planning/release.md",
+    "--input",
+    "topics/discussion/incident.md",
+    "--base",
+    "reports/2026-03-08_weekly.md",
+    "--base",
+    "reports/2026-03-01_weekly.md",
+    "--model",
+    "gpt-4.1",
+  ]);
+
+  expect(parsed).toEqual({
+    project: "apollo",
+    period: "weekly",
+    input: ["topics/planning/release.md", "topics/discussion/incident.md"],
+    base: ["reports/2026-03-08_weekly.md", "reports/2026-03-01_weekly.md"],
+    model: "gpt-4.1",
+    verbose: false,
+  });
+});
+
+test("parseReportCommandArgs defaults period to weekly", () => {
+  const parsed = parseReportCommandArgs(["--project", "apollo"]);
+
+  expect(parsed).toEqual({
+    project: "apollo",
+    period: "weekly",
+    input: [],
+    base: [],
+    model: "gpt-5.2",
+    verbose: false,
+  });
+});
+
+test("parseReportCommandArgs rejects invalid period", () => {
+  expect(() =>
+    parseReportCommandArgs(["--project", "apollo", "--period", "quarterly"]),
+  ).toThrow("Invalid --period value");
 });
 
 test("runCli returns readable error for missing args", async () => {
@@ -129,6 +177,53 @@ test("runCli merge returns readable error for missing project arg", async () => 
 
   expect(exitCode).toBe(1);
   expect(errors.join("\n")).toContain("Missing required argument: --project");
+});
+
+test("runCli report defaults period to weekly when omitted", async () => {
+  let capturedContext: unknown;
+
+  const exitCode = await runCli(
+    ["report", "--project", "apollo"],
+    {
+      resolveReportInputFiles: async () => [],
+      resolveBaseReportFiles: async () => [],
+      loadReportContext: async (context) => {
+        capturedContext = context;
+        return {
+          period: context.period,
+          inputs: [],
+          baseReports: [],
+        };
+      },
+      generateReport: async () => ({
+        title: "Weekly Report",
+        executiveSummary: "Summary",
+        updatedInformation: [],
+        resolutions: [],
+        nextSteps: [],
+      }),
+      writeReportFile: async () => ({
+        absolutePath: "/tmp/apollo/reports/2026-03-10_weekly.md",
+        relativePath: "reports/2026-03-10_weekly.md",
+      }),
+    },
+    {
+      out: () => {
+        return;
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(capturedContext).toEqual({
+    projectRoot: expect.any(String),
+    period: "weekly",
+    inputFiles: [],
+    baseFiles: [],
+  });
 });
 
 test("runCli digest writes stage 1 files only", async () => {
@@ -215,8 +310,8 @@ test("runCli merge processes pending staged notes", async () => {
         },
       ],
       prepareTopicMerge: async () => ({
-        targetPath: "/tmp/apollo/planning/sprint-goals.md",
-        relativeTargetPath: "planning/sprint-goals.md",
+        targetPath: "/tmp/apollo/topics/planning/sprint-goals.md",
+        relativeTargetPath: "topics/planning/sprint-goals.md",
         currentContent: "same",
         proposedContent: "same",
         isNew: false,
@@ -239,7 +334,7 @@ test("runCli merge processes pending staged notes", async () => {
   expect(exitCode).toBe(0);
   expect(output).toContain("Found 1 pending stage 1 digest file(s).");
   expect(output).toContain(
-    "No topic change: /tmp/apollo/planning/sprint-goals.md",
+    "No topic change: /tmp/apollo/topics/planning/sprint-goals.md",
   );
   expect(output).toContain("Confirmed 0 topic merge(s).");
   expect(output).toContain("Marked 1 staged note(s) as merged.");
@@ -248,11 +343,79 @@ test("runCli merge processes pending staged notes", async () => {
   ]);
 });
 
+test("runCli report generates report and prints output path", async () => {
+  const output: string[] = [];
+
+  const exitCode = await runCli(
+    [
+      "report",
+      "--project",
+      "apollo",
+      "--period",
+      "weekly",
+      "--input",
+      "topics/planning/release.md",
+      "--base",
+      "reports/2026-03-08_weekly.md",
+    ],
+    {
+      resolveReportInputFiles: async () => [
+        "/tmp/apollo/topics/planning/release.md",
+      ],
+      resolveBaseReportFiles: async () => [
+        "/tmp/apollo/reports/2026-03-08_weekly.md",
+      ],
+      loadReportContext: async () => ({
+        period: "weekly",
+        inputs: [
+          {
+            path: "topics/planning/release.md",
+            category: "planning",
+            topic: "Release Readiness",
+            summary: "Summary",
+            keyPoints: ["Point"],
+            timeline: ["2026-03-09 - Update"],
+            references: [],
+          },
+        ],
+        baseReports: [],
+      }),
+      generateReport: async () => ({
+        title: "Weekly Report",
+        executiveSummary: "Team made progress.",
+        updatedInformation: ["Updated item"],
+        resolutions: ["Resolved item"],
+        nextSteps: ["Next item"],
+      }),
+      writeReportFile: async () => ({
+        absolutePath: "/tmp/apollo/reports/2026-03-09_weekly.md",
+        relativePath: "reports/2026-03-09_weekly.md",
+      }),
+    },
+    {
+      out: (message) => {
+        output.push(message);
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(output).toContain("Resolved 1 report input file(s).");
+  expect(output).toContain("Resolved 1 base report file(s).");
+  expect(output).toContain(
+    "Generated report: /tmp/apollo/reports/2026-03-09_weekly.md",
+  );
+});
+
 test("renderDiffPreview renders unified hunks and change counts", () => {
   const current = [
     "---",
-    'topic: "Sprint Goals"',
+    "category: planning",
     "---",
+    "# Sprint Goals",
     "## Summary",
     "Plan sprint goals.",
     "## Key Points",
@@ -260,8 +423,9 @@ test("renderDiffPreview renders unified hunks and change counts", () => {
   ].join("\n");
   const proposed = [
     "---",
-    'topic: "Sprint Goals"',
+    "category: planning",
     "---",
+    "# Sprint Goals",
     "## Summary",
     "Plan sprint goals with staffing detail.",
     "## Key Points",
@@ -274,7 +438,7 @@ test("renderDiffPreview renders unified hunks and change counts", () => {
   expect(preview).toContain("--- current");
   expect(preview).toContain("+++ proposed");
   expect(preview).toContain("Changes: +2 -1");
-  expect(preview).toContain("@@ -2,6 +2,7 @@");
+  expect(preview).toContain("@@ -3,6 +3,7 @@");
   expect(preview).toContain("- Plan sprint goals.");
   expect(preview).toContain("+ Plan sprint goals with staffing detail.");
   expect(preview).toContain("+ - Confirm owners");

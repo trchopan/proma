@@ -1,4 +1,10 @@
 export {
+  loadReportContext,
+  resolveBaseReportFiles,
+  resolveReportInputFiles,
+  writeReportFile,
+} from "./storage/report-files";
+export {
   allocateNextIndex,
   listPendingStageOneDigestItems,
   markStageOneDigestItemMerged,
@@ -6,7 +12,6 @@ export {
   type WriteStageOneDigestItemsOptions,
   writeStageOneDigestItems,
 } from "./storage/stage-notes";
-
 export {
   listTopicCandidates,
   type PreparedTopicMerge,
