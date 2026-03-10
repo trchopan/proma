@@ -32,6 +32,7 @@ export type DigestGenerationOptions = {
   model: string;
   logger?: Logger;
   promptRegistry: PromptRegistry;
+  dryRun?: boolean;
 };
 
 export type DigestInputImage = {
@@ -65,6 +66,7 @@ export type TopicRoutingOptions = {
   model: string;
   logger?: Logger;
   promptRegistry: PromptRegistry;
+  dryRun?: boolean;
 };
 
 export const DIGEST_RESPONSE_SCHEMA = {
@@ -399,6 +401,7 @@ export async function generateDigestItems(
     {
       model: options.model,
       logger: options.logger,
+      dryRun: options.dryRun,
       chatCompletion,
     },
   );
@@ -521,6 +524,7 @@ export async function generateTopicTargets(
     {
       model: options.model,
       logger: options.logger,
+      dryRun: options.dryRun,
       chatCompletion,
     },
   );

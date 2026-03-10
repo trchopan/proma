@@ -17,12 +17,14 @@ export type DigestArgs = {
   project: string;
   model: string;
   verbose: boolean;
+  dryRun: boolean;
 };
 
 export type MergeArgs = {
   project: string;
   model: string;
   verbose: boolean;
+  dryRun: boolean;
 };
 
 export type ReportArgs = {
@@ -32,6 +34,7 @@ export type ReportArgs = {
   base: string[];
   model: string;
   verbose: boolean;
+  dryRun: boolean;
 };
 
 const DEFAULT_REPORT_PERIOD: ReportPeriod = "weekly";
@@ -80,12 +83,13 @@ function parseOptionValues(
 export function parseDigestCommandArgs(args: string[]): DigestArgs {
   const { values, flags } = parseOptionValues(args, {
     valueOptions: new Set(["--input", "--project", "--model"]),
-    flagOptions: new Set(["--verbose"]),
+    flagOptions: new Set(["--verbose", "--dry-run"]),
   });
   const input = values.get("--input")?.[0];
   const project = values.get("--project")?.[0];
   const model = values.get("--model")?.[0] ?? DEFAULT_MODEL;
   const verbose = flags.has("--verbose");
+  const dryRun = flags.has("--dry-run");
 
   if (!input) {
     throw new Error("Missing required argument: --input");
@@ -95,23 +99,24 @@ export function parseDigestCommandArgs(args: string[]): DigestArgs {
     throw new Error("Missing required argument: --project");
   }
 
-  return { input, project, model, verbose };
+  return { input, project, model, verbose, dryRun };
 }
 
 export function parseMergeCommandArgs(args: string[]): MergeArgs {
   const { values, flags } = parseOptionValues(args, {
     valueOptions: new Set(["--project", "--model"]),
-    flagOptions: new Set(["--verbose"]),
+    flagOptions: new Set(["--verbose", "--dry-run"]),
   });
   const project = values.get("--project")?.[0];
   const model = values.get("--model")?.[0] ?? DEFAULT_MODEL;
   const verbose = flags.has("--verbose");
+  const dryRun = flags.has("--dry-run");
 
   if (!project) {
     throw new Error("Missing required argument: --project");
   }
 
-  return { project, model, verbose };
+  return { project, model, verbose, dryRun };
 }
 
 export function parseReportCommandArgs(args: string[]): ReportArgs {
@@ -123,7 +128,7 @@ export function parseReportCommandArgs(args: string[]): ReportArgs {
       "--base",
       "--model",
     ]),
-    flagOptions: new Set(["--verbose"]),
+    flagOptions: new Set(["--verbose", "--dry-run"]),
     repeatableOptions: new Set(["--input", "--base"]),
   });
 
@@ -134,6 +139,7 @@ export function parseReportCommandArgs(args: string[]): ReportArgs {
   const input = values.get("--input") ?? [];
   const base = values.get("--base") ?? [];
   const verbose = flags.has("--verbose");
+  const dryRun = flags.has("--dry-run");
 
   if (!project) {
     throw new Error("Missing required argument: --project");
@@ -152,5 +158,6 @@ export function parseReportCommandArgs(args: string[]): ReportArgs {
     base,
     model,
     verbose,
+    dryRun,
   };
 }

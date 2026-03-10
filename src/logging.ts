@@ -42,6 +42,7 @@ export type Logger = {
 type CreateLoggerOptions = {
   command: string;
   verbose: boolean;
+  dryRun?: boolean;
   out: (message: string) => void;
   err: (message: string) => void;
   logsRoot?: string;
@@ -67,7 +68,9 @@ export async function createLogger(
   const fileName = `${safeTimestamp(now)}_${options.command}_${process.pid}.jsonl`;
   const logFilePath = path.join(directory, fileName);
 
-  await mkdir(directory, { recursive: true });
+  if (!options.dryRun) {
+    await mkdir(directory, { recursive: true });
+  }
 
   async function write(
     level: LogLevel,
@@ -97,7 +100,9 @@ export async function createLogger(
       options.out(message);
     }
 
-    await appendFile(logFilePath, `${JSON.stringify(payload)}\n`, "utf8");
+    if (!options.dryRun) {
+      await appendFile(logFilePath, `${JSON.stringify(payload)}\n`, "utf8");
+    }
   }
 
   return {

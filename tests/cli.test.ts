@@ -27,6 +27,7 @@ test("parseDigestCommandArgs parses required and optional args", () => {
     project: "apollo",
     model: "gpt-4.1",
     verbose: false,
+    dryRun: false,
   });
 });
 
@@ -44,6 +45,25 @@ test("parseDigestCommandArgs parses --verbose flag", () => {
     project: "apollo",
     model: "gpt-5.2",
     verbose: true,
+    dryRun: false,
+  });
+});
+
+test("parseDigestCommandArgs parses --dry-run flag", () => {
+  const parsed = parseDigestCommandArgs([
+    "--input",
+    "raw.md",
+    "--project",
+    "apollo",
+    "--dry-run",
+  ]);
+
+  expect(parsed).toEqual({
+    input: "raw.md",
+    project: "apollo",
+    model: "gpt-5.2",
+    verbose: false,
+    dryRun: true,
   });
 });
 
@@ -59,6 +79,7 @@ test("parseMergeCommandArgs parses required and optional args", () => {
     project: "apollo",
     model: "gpt-4.1",
     verbose: false,
+    dryRun: false,
   });
 });
 
@@ -69,6 +90,18 @@ test("parseMergeCommandArgs parses --verbose flag", () => {
     project: "apollo",
     model: "gpt-5.2",
     verbose: true,
+    dryRun: false,
+  });
+});
+
+test("parseMergeCommandArgs parses --dry-run flag", () => {
+  const parsed = parseMergeCommandArgs(["--project", "apollo", "--dry-run"]);
+
+  expect(parsed).toEqual({
+    project: "apollo",
+    model: "gpt-5.2",
+    verbose: false,
+    dryRun: true,
   });
 });
 
@@ -97,6 +130,7 @@ test("parseReportCommandArgs parses required and repeatable args", () => {
     base: ["reports/2026-03-08_weekly.md", "reports/2026-03-01_weekly.md"],
     model: "gpt-4.1",
     verbose: false,
+    dryRun: false,
   });
 });
 
@@ -110,6 +144,21 @@ test("parseReportCommandArgs defaults period to weekly", () => {
     base: [],
     model: "gpt-5.2",
     verbose: false,
+    dryRun: false,
+  });
+});
+
+test("parseReportCommandArgs parses --dry-run flag", () => {
+  const parsed = parseReportCommandArgs(["--project", "apollo", "--dry-run"]);
+
+  expect(parsed).toEqual({
+    project: "apollo",
+    period: "weekly",
+    input: [],
+    base: [],
+    model: "gpt-5.2",
+    verbose: false,
+    dryRun: true,
   });
 });
 
@@ -272,6 +321,44 @@ test("runCli digest writes stage 1 files only", async () => {
   expect(output).toContain("Wrote 1 stage 1 digest file(s):");
 });
 
+test("runCli digest with --dry-run does not write stage 1 files", async () => {
+  const output: string[] = [];
+  const mockItems: DigestItem[] = [
+    {
+      category: "planning",
+      source: "wiki",
+      summary: "Plan sprint goals.",
+      keyPoints: ["Align scope"],
+      timeline: ["2026-03-09 - Sprint planning kickoff"],
+      references: [],
+    },
+  ];
+
+  const exitCode = await runCli(
+    ["digest", "--input", "./input.txt", "--project", "apollo", "--dry-run"],
+    {
+      readTextFile: async () => "raw text",
+      generateDigestItems: async () => mockItems,
+      writeStageOneDigestItems: async () => {
+        throw new Error("writeStageOneDigestItems should not be called");
+      },
+    },
+    {
+      out: (message) => {
+        output.push(message);
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(output).toContain(
+    "Dry run complete. Would write 1 stage 1 digest file(s).",
+  );
+});
+
 test("runCli merge processes pending staged notes", async () => {
   const output: string[] = [];
   const mockItems: DigestItem[] = [
@@ -343,6 +430,74 @@ test("runCli merge processes pending staged notes", async () => {
   ]);
 });
 
+test("runCli merge with --dry-run does not write files", async () => {
+  const output: string[] = [];
+  const mockItem: DigestItem = {
+    category: "planning",
+    source: "wiki",
+    summary: "Plan sprint goals.",
+    keyPoints: ["Align scope"],
+    timeline: ["2026-03-09 - Sprint planning kickoff"],
+    references: [],
+  };
+
+  const exitCode = await runCli(
+    ["merge", "--project", "apollo", "--dry-run"],
+    {
+      listPendingStageOneDigestItems: async () => [
+        {
+          item: mockItem,
+          absolutePath: "/tmp/apollo/notes/planning_2026-03-09_1.md",
+          relativePath: "notes/planning_2026-03-09_1.md",
+        },
+      ],
+      markStageOneDigestItemMerged: async () => {
+        throw new Error("markStageOneDigestItemMerged should not be called");
+      },
+      listTopicCandidates: async () => [],
+      generateTopicTargets: async () => [
+        {
+          action: "create_new",
+          shortDescription: "sprint-goals",
+          topic: "Sprint Goals",
+          tags: ["sprint"],
+        },
+      ],
+      prepareTopicMerge: async () => ({
+        targetPath: "/tmp/apollo/topics/planning/sprint-goals.md",
+        relativeTargetPath: "topics/planning/sprint-goals.md",
+        currentContent: "before",
+        proposedContent: "after",
+        isNew: false,
+        hasChanges: true,
+      }),
+      confirmMerge: async () => {
+        throw new Error("confirmMerge should not be called in dry run");
+      },
+      writePreparedTopicMerge: async () => {
+        throw new Error("writePreparedTopicMerge should not be called");
+      },
+    },
+    {
+      out: (message) => {
+        output.push(message);
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(output).toContain(
+    "Dry run: would merge into topic file: /tmp/apollo/topics/planning/sprint-goals.md",
+  );
+  expect(output).toContain(
+    "Dry run: would mark staged note as merged: /tmp/apollo/notes/planning_2026-03-09_1.md",
+  );
+  expect(output).toContain("Would mark 1 staged note(s) as merged.");
+});
+
 test("runCli report generates report and prints output path", async () => {
   const output: string[] = [];
 
@@ -407,6 +562,46 @@ test("runCli report generates report and prints output path", async () => {
   expect(output).toContain("Resolved 1 base report file(s).");
   expect(output).toContain(
     "Generated report: /tmp/apollo/reports/2026-03-09_weekly.md",
+  );
+});
+
+test("runCli report with --dry-run does not write report file", async () => {
+  const output: string[] = [];
+
+  const exitCode = await runCli(
+    ["report", "--project", "apollo", "--dry-run"],
+    {
+      resolveReportInputFiles: async () => [],
+      resolveBaseReportFiles: async () => [],
+      loadReportContext: async () => ({
+        period: "weekly",
+        inputs: [],
+        baseReports: [],
+      }),
+      generateReport: async () => ({
+        title: "Weekly Report",
+        executiveSummary: "Team made progress.",
+        updatedInformation: ["Updated item"],
+        resolutions: ["Resolved item"],
+        nextSteps: ["Next item"],
+      }),
+      writeReportFile: async () => {
+        throw new Error("writeReportFile should not be called");
+      },
+    },
+    {
+      out: (message) => {
+        output.push(message);
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(output).toContain(
+    "Dry run complete. Would write generated report markdown file.",
   );
 });
 
