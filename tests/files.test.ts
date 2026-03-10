@@ -226,8 +226,6 @@ test("prepareTopicMerge is idempotent for same reference", async () => {
         "  - 'release'",
         "sources:",
         "  - slack",
-        "source_refs:",
-        "  - 'slack: https://example.com/thread'",
         "merged_digest_ids:",
         "  - 'refs:slack: https://example.com/thread'",
         "---",
