@@ -7,7 +7,7 @@ function sampleContext(kind: ProcessingKind): unknown {
     return {
       inputText: "sample",
       images: [],
-      allowedSources: ["slack", "wiki", "git", "figma", "file"],
+      allowedSources: ["slack", "wiki", "git", "document"],
     };
   }
 

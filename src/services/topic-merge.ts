@@ -45,7 +45,14 @@ export function normalizeTags(tags: string[]): string[] {
 
 function normalizeSources(sources: string[]): DigestSource[] {
   const normalized = sources
-    .map((value) => value.trim().toLowerCase())
+    .map((value) => {
+      const source = value.trim().toLowerCase();
+      if (source === "figma" || source === "file") {
+        return "document";
+      }
+
+      return source;
+    })
     .filter((value): value is DigestSource =>
       (DIGEST_SOURCES as readonly string[]).includes(value),
     );
