@@ -4,6 +4,7 @@ import path from "node:path";
 import type { DigestCategory, DigestItem, TopicRoutingTarget } from "../digest";
 import {
   extractCanonicalTopicData,
+  extractTopicTitle,
   firstMeaningfulLine,
 } from "../markdown/canonical-topic";
 import { parseFrontMatter } from "../markdown/frontmatter";
@@ -63,7 +64,7 @@ export async function listTopicCandidates(
     const parsed = parseFrontMatter(markdown);
     const canonical = extractCanonicalTopicData(parsed.body);
     const slug = fileName.slice(0, -3);
-    const topic = parsed.metadata.topic?.trim() || slug;
+    const topic = extractTopicTitle(parsed.body) || slug;
     const tags = normalizeTags(parsed.metadata.tags ?? []);
     const summary =
       canonical.summary || firstMeaningfulLine(parsed.body) || topic;

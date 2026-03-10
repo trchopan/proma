@@ -223,7 +223,8 @@ Report file behavior:
 Stage-1 files include YAML front matter with `category`, `source`, and `merged`.
 `merge` only picks files where `merged` is not `true`.
 
-Topic files include YAML front matter metadata (`topic`, `category`, `created_at`, `updated_at`, `tags`, `sources`, `merged_digest_ids`).
+Topic files include YAML front matter metadata (`category`, `created_at`, `updated_at`, `tags`, `sources`, `merged_digest_ids`).
+The topic name is stored in the Markdown level-1 title (`# ...`) at the top of the file body.
 Tag metadata is normalized to lowercase kebab-case, deduplicated, and sorted.
 
 Topic files are canonical-only: each file keeps a single merged `Summary/Key Points/Timeline/References` view instead of appending chronological digest entries.

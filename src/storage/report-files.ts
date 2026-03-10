@@ -2,6 +2,7 @@ import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 import {
   extractCanonicalTopicData,
+  extractTopicTitle,
   firstMeaningfulLine,
 } from "../markdown/canonical-topic";
 import {
@@ -183,7 +184,7 @@ async function loadInputContext(
     parsed.metadata.category ??
     inferTopicCategoryFromPath(projectRoot, absolutePath);
   const topicHint =
-    parsed.metadata.topic?.trim() || path.basename(absolutePath, ".md");
+    extractTopicTitle(parsed.body) || path.basename(absolutePath, ".md");
 
   return {
     path: toRelativeOrAbsolute(projectRoot, absolutePath),

@@ -129,7 +129,6 @@ test("listTopicCandidates reads topic front matter", async () => {
       path.join(topicDir, "release-readiness.md"),
       [
         "---",
-        "topic: 'Release Readiness'",
         "category: planning",
         "created_at: '2026-03-09T00:00:00.000Z'",
         "updated_at: '2026-03-09T00:00:00.000Z'",
@@ -139,6 +138,8 @@ test("listTopicCandidates reads topic front matter", async () => {
         "sources:",
         "  - git",
         "---",
+        "",
+        "# Release Readiness",
         "",
         "## Summary",
         "Release readiness baseline.",
@@ -185,7 +186,7 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
     expect(plan.relativeTargetPath).toBe(
       "topics/discussion/incident-response.md",
     );
-    expect(plan.proposedContent).toContain("topic: 'Incident Response'");
+    expect(plan.proposedContent).toContain("# Incident Response");
     expect(plan.proposedContent).toContain(
       "updated_at: '2026-03-09T10:00:00.000Z'",
     );
@@ -218,7 +219,6 @@ test("prepareTopicMerge is idempotent for same reference", async () => {
       existingPath,
       [
         "---",
-        "topic: 'Release Policy'",
         "category: planning",
         "created_at: '2026-03-09T00:00:00.000Z'",
         "updated_at: '2026-03-09T00:00:00.000Z'",
@@ -231,6 +231,8 @@ test("prepareTopicMerge is idempotent for same reference", async () => {
         "merged_digest_ids:",
         "  - 'refs:slack: https://example.com/thread'",
         "---",
+        "",
+        "# Release Policy",
         "",
         "## Summary",
         "Existing summary",
@@ -365,9 +367,10 @@ test("loadReportContext parses input and base report context", async () => {
       inputPath,
       [
         "---",
-        "topic: 'Release Readiness'",
         "category: planning",
         "---",
+        "",
+        "# Release Readiness",
         "",
         "## Summary",
         "Release status update",

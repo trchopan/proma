@@ -413,8 +413,9 @@ test("runCli report generates report and prints output path", async () => {
 test("renderDiffPreview renders unified hunks and change counts", () => {
   const current = [
     "---",
-    'topic: "Sprint Goals"',
+    "category: planning",
     "---",
+    "# Sprint Goals",
     "## Summary",
     "Plan sprint goals.",
     "## Key Points",
@@ -422,8 +423,9 @@ test("renderDiffPreview renders unified hunks and change counts", () => {
   ].join("\n");
   const proposed = [
     "---",
-    'topic: "Sprint Goals"',
+    "category: planning",
     "---",
+    "# Sprint Goals",
     "## Summary",
     "Plan sprint goals with staffing detail.",
     "## Key Points",
@@ -436,7 +438,7 @@ test("renderDiffPreview renders unified hunks and change counts", () => {
   expect(preview).toContain("--- current");
   expect(preview).toContain("+++ proposed");
   expect(preview).toContain("Changes: +2 -1");
-  expect(preview).toContain("@@ -2,6 +2,7 @@");
+  expect(preview).toContain("@@ -3,6 +3,7 @@");
   expect(preview).toContain("- Plan sprint goals.");
   expect(preview).toContain("+ Plan sprint goals with staffing detail.");
   expect(preview).toContain("+ - Confirm owners");

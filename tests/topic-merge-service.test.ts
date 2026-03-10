@@ -12,7 +12,6 @@ test("slugifyTopic normalizes user text", () => {
 test("buildTopicMergeContent is no-op when digest id already merged", () => {
   const currentContent = [
     "---",
-    "topic: 'Release Policy'",
     "category: planning",
     "created_at: '2026-03-09T00:00:00.000Z'",
     "updated_at: '2026-03-09T00:00:00.000Z'",
@@ -23,6 +22,8 @@ test("buildTopicMergeContent is no-op when digest id already merged", () => {
     "merged_digest_ids:",
     "  - 'refs:slack: https://example.com/thread'",
     "---",
+    "",
+    "# Release Policy",
     "",
     "## Summary",
     "Existing summary",
@@ -64,7 +65,6 @@ test("buildTopicMergeContent is no-op when digest id already merged", () => {
 test("buildTopicMergeContent treats legacy source_refs as merged digest ids", () => {
   const currentContent = [
     "---",
-    "topic: 'Release Policy'",
     "category: planning",
     "created_at: '2026-03-09T00:00:00.000Z'",
     "updated_at: '2026-03-09T00:00:00.000Z'",
@@ -75,6 +75,8 @@ test("buildTopicMergeContent treats legacy source_refs as merged digest ids", ()
     "source_refs:",
     "  - 'slack: https://example.com/thread'",
     "---",
+    "",
+    "# Release Policy",
     "",
     "## Summary",
     "Existing summary",
