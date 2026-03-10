@@ -64,6 +64,7 @@ type CliDependencies = {
   createLogger: (options: {
     command: string;
     verbose: boolean;
+    dryRun?: boolean;
     out: (message: string) => void;
     err: (message: string) => void;
   }) => Promise<Logger>;
@@ -86,9 +87,9 @@ function defaultReadTextFile(filePath: string): Promise<string> {
 function usage(): string {
   return [
     "Usage:",
-    "  proma digest --input <file> --project <output-root> [--model <model>] [--verbose]",
-    "  proma merge --project <output-root> [--model <model>] [--verbose]",
-    "  proma report --project <output-root> [--period <daily|weekly|bi-weekly|monthly>] [--input <file> ...] [--base <file> ...] [--model <model>] [--verbose]",
+    "  proma digest --input <file> --project <output-root> [--model <model>] [--verbose] [--dry-run]",
+    "  proma merge --project <output-root> [--model <model>] [--verbose] [--dry-run]",
+    "  proma report --project <output-root> [--period <daily|weekly|bi-weekly|monthly>] [--input <file> ...] [--base <file> ...] [--model <model>] [--verbose] [--dry-run]",
   ].join("\n");
 }
 
@@ -155,12 +156,21 @@ async function runDigestCommand(
       model: parsed.model,
       logger,
       promptRegistry,
+      dryRun: parsed.dryRun,
     },
   );
 
   await logger.debug("digest.items_generated", "Generated digest items", {
     itemCount: items.length,
   });
+
+  if (parsed.dryRun) {
+    await logger.progress(
+      "digest.dry_run",
+      `Dry run complete. Would write ${items.length} stage 1 digest file(s).`,
+    );
+    return 0;
+  }
 
   await logger.progress(
     "digest.write_stage_one",
@@ -226,6 +236,7 @@ async function runMergeCommand(
         model: parsed.model,
         logger,
         promptRegistry,
+        dryRun: parsed.dryRun,
       },
     );
     await logger.debug("merge.targets", "Generated topic routing targets", {
@@ -252,7 +263,9 @@ async function runMergeCommand(
         plan.currentContent,
         plan.proposedContent,
       );
-      const approved = await deps.confirmMerge(plan.targetPath, preview);
+      const approved = parsed.dryRun
+        ? true
+        : await deps.confirmMerge(plan.targetPath, preview);
       await logger.debug("merge.confirmation", "Merge confirmation captured", {
         targetPath: plan.targetPath,
         approved,
@@ -268,24 +281,41 @@ async function runMergeCommand(
         continue;
       }
 
-      await deps.writePreparedTopicMerge(plan);
+      if (parsed.dryRun) {
+        await logger.progress(
+          "merge.dry_run.plan",
+          `Dry run: would merge into topic file: ${plan.targetPath}`,
+        );
+      } else {
+        await deps.writePreparedTopicMerge(plan);
+      }
       mergedFiles.push(plan.targetPath);
-      await logger.progress(
-        "merge.applied",
-        `Merged into topic file: ${plan.targetPath}`,
-      );
+      if (!parsed.dryRun) {
+        await logger.progress(
+          "merge.applied",
+          `Merged into topic file: ${plan.targetPath}`,
+        );
+      }
     }
 
     if (hasSkippedMerge) {
       continue;
     }
 
-    await deps.markStageOneDigestItemMerged(stagedItem.absolutePath);
-    completedStagedItems += 1;
-    await logger.progress(
-      "merge.marked_staged",
-      `Marked staged note as merged: ${stagedItem.absolutePath}`,
-    );
+    if (parsed.dryRun) {
+      completedStagedItems += 1;
+      await logger.progress(
+        "merge.dry_run.stage",
+        `Dry run: would mark staged note as merged: ${stagedItem.absolutePath}`,
+      );
+    } else {
+      await deps.markStageOneDigestItemMerged(stagedItem.absolutePath);
+      completedStagedItems += 1;
+      await logger.progress(
+        "merge.marked_staged",
+        `Marked staged note as merged: ${stagedItem.absolutePath}`,
+      );
+    }
   }
 
   await logger.progress(
@@ -300,7 +330,7 @@ async function runMergeCommand(
   }
   await logger.progress(
     "merge.summary.marked",
-    `Marked ${completedStagedItems} staged note(s) as merged.`,
+    `${parsed.dryRun ? "Would mark" : "Marked"} ${completedStagedItems} staged note(s) as merged.`,
   );
 
   return 0;
@@ -350,7 +380,16 @@ async function runReportCommand(
     model: parsed.model,
     logger,
     promptRegistry,
+    dryRun: parsed.dryRun,
   });
+
+  if (parsed.dryRun) {
+    await logger.progress(
+      "report.dry_run",
+      "Dry run complete. Would write generated report markdown file.",
+    );
+    return 0;
+  }
 
   await logger.progress("report.write", "Writing report file...");
   const markdown = renderReportMarkdown(generated);
@@ -405,11 +444,15 @@ export async function runCli(
   };
 
   const hasGlobalVerbose = argv.includes("--verbose");
+  const hasGlobalDryRun = argv.includes("--dry-run");
   const normalizedArgv = hasGlobalVerbose
     ? argv.filter((arg) => arg !== "--verbose")
     : argv;
+  const normalizedArgvWithoutGlobalFlags = hasGlobalDryRun
+    ? normalizedArgv.filter((arg) => arg !== "--dry-run")
+    : normalizedArgv;
 
-  const command = normalizedArgv[0];
+  const command = normalizedArgvWithoutGlobalFlags[0];
   if (command !== "digest" && command !== "merge" && command !== "report") {
     terminal.err(`Unknown command: ${command ?? "(none)"}`);
     terminal.err(usage());
@@ -419,23 +462,30 @@ export async function runCli(
   const logger = await deps.createLogger({
     command,
     verbose: hasGlobalVerbose,
+    dryRun: hasGlobalDryRun,
     out: terminal.out,
     err: terminal.err,
   });
 
   await logger.debug("cli.start", `Starting '${command}' command`, {
     argv,
-    normalizedArgv,
+    normalizedArgv: normalizedArgvWithoutGlobalFlags,
     logFilePath: logger.logFilePath,
+    dryRun: hasGlobalDryRun,
   });
-  await logger.info("cli.log_path", `Writing logs to ${logger.logFilePath}`);
+  if (!hasGlobalDryRun) {
+    await logger.info("cli.log_path", `Writing logs to ${logger.logFilePath}`);
+  }
 
   try {
     const promptRegistry = await deps.loadPromptRegistry(process.cwd());
     deps.validatePromptRegistry(promptRegistry);
 
     if (command === "digest") {
-      const parsed = parseDigestCommandArgs(normalizedArgv.slice(1));
+      const parsed = {
+        ...parseDigestCommandArgs(normalizedArgvWithoutGlobalFlags.slice(1)),
+        dryRun: hasGlobalDryRun,
+      };
       const exitCode = await runDigestCommand(
         parsed,
         deps,
@@ -449,7 +499,10 @@ export async function runCli(
     }
 
     if (command === "report") {
-      const parsed = parseReportCommandArgs(normalizedArgv.slice(1));
+      const parsed = {
+        ...parseReportCommandArgs(normalizedArgvWithoutGlobalFlags.slice(1)),
+        dryRun: hasGlobalDryRun,
+      };
       const exitCode = await runReportCommand(
         parsed,
         deps,
@@ -462,7 +515,10 @@ export async function runCli(
       return exitCode;
     }
 
-    const parsed = parseMergeCommandArgs(normalizedArgv.slice(1));
+    const parsed = {
+      ...parseMergeCommandArgs(normalizedArgvWithoutGlobalFlags.slice(1)),
+      dryRun: hasGlobalDryRun,
+    };
     const exitCode = await runMergeCommand(
       parsed,
       deps,

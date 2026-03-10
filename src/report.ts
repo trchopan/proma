@@ -48,6 +48,7 @@ export type ReportGenerationOptions = {
   model: string;
   logger?: Logger;
   promptRegistry: PromptRegistry;
+  dryRun?: boolean;
 };
 
 export const REPORT_RESPONSE_SCHEMA = {
@@ -163,6 +164,7 @@ export async function generateReport(
     {
       model: options.model,
       logger: options.logger,
+      dryRun: options.dryRun,
       chatCompletion,
     },
   );
