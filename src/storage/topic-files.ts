@@ -43,7 +43,7 @@ export async function listTopicCandidates(
   projectRoot: string,
   category: DigestCategory,
 ): Promise<TopicCandidate[]> {
-  const categoryDir = path.join(projectRoot, category);
+  const categoryDir = path.join(projectRoot, "topics", category);
   let files: string[] = [];
 
   try {
@@ -93,7 +93,11 @@ export async function prepareTopicMerge(
     throw new Error("Topic merge target slug could not be resolved");
   }
 
-  const relativeTargetPath = path.join(options.category, `${slug}.md`);
+  const relativeTargetPath = path.join(
+    "topics",
+    options.category,
+    `${slug}.md`,
+  );
   const targetPath = path.join(options.projectRoot, relativeTargetPath);
 
   let currentContent = "";

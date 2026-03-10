@@ -63,7 +63,7 @@ test("generateReport sends strict schema with context variables", async () => {
       period: "weekly",
       inputs: [
         {
-          path: "planning/release.md",
+          path: "topics/planning/release.md",
           category: "planning",
           topic: "Release",
           summary: "Summary",
@@ -115,6 +115,6 @@ test("generateReport sends strict schema with context variables", async () => {
     .map((message) => message.content)
     .join("\n");
   expect(promptText).toContain("Create a weekly project report");
-  expect(promptText).toContain("planning/release.md");
+  expect(promptText).toContain("topics/planning/release.md");
   expect(promptText).toContain("2026-03-01_weekly.md");
 });

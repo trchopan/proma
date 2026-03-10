@@ -79,9 +79,9 @@ test("parseReportCommandArgs parses required and repeatable args", () => {
     "--period",
     "weekly",
     "--input",
-    "planning/release.md",
+    "topics/planning/release.md",
     "--input",
-    "discussion/incident.md",
+    "topics/discussion/incident.md",
     "--base",
     "reports/2026-03-08_weekly.md",
     "--base",
@@ -93,7 +93,7 @@ test("parseReportCommandArgs parses required and repeatable args", () => {
   expect(parsed).toEqual({
     project: "apollo",
     period: "weekly",
-    input: ["planning/release.md", "discussion/incident.md"],
+    input: ["topics/planning/release.md", "topics/discussion/incident.md"],
     base: ["reports/2026-03-08_weekly.md", "reports/2026-03-01_weekly.md"],
     model: "gpt-4.1",
     verbose: false,
@@ -310,8 +310,8 @@ test("runCli merge processes pending staged notes", async () => {
         },
       ],
       prepareTopicMerge: async () => ({
-        targetPath: "/tmp/apollo/planning/sprint-goals.md",
-        relativeTargetPath: "planning/sprint-goals.md",
+        targetPath: "/tmp/apollo/topics/planning/sprint-goals.md",
+        relativeTargetPath: "topics/planning/sprint-goals.md",
         currentContent: "same",
         proposedContent: "same",
         isNew: false,
@@ -334,7 +334,7 @@ test("runCli merge processes pending staged notes", async () => {
   expect(exitCode).toBe(0);
   expect(output).toContain("Found 1 pending stage 1 digest file(s).");
   expect(output).toContain(
-    "No topic change: /tmp/apollo/planning/sprint-goals.md",
+    "No topic change: /tmp/apollo/topics/planning/sprint-goals.md",
   );
   expect(output).toContain("Confirmed 0 topic merge(s).");
   expect(output).toContain("Marked 1 staged note(s) as merged.");
@@ -354,12 +354,14 @@ test("runCli report generates report and prints output path", async () => {
       "--period",
       "weekly",
       "--input",
-      "planning/release.md",
+      "topics/planning/release.md",
       "--base",
       "reports/2026-03-08_weekly.md",
     ],
     {
-      resolveReportInputFiles: async () => ["/tmp/apollo/planning/release.md"],
+      resolveReportInputFiles: async () => [
+        "/tmp/apollo/topics/planning/release.md",
+      ],
       resolveBaseReportFiles: async () => [
         "/tmp/apollo/reports/2026-03-08_weekly.md",
       ],
@@ -367,7 +369,7 @@ test("runCli report generates report and prints output path", async () => {
         period: "weekly",
         inputs: [
           {
-            path: "planning/release.md",
+            path: "topics/planning/release.md",
             category: "planning",
             topic: "Release Readiness",
             summary: "Summary",
