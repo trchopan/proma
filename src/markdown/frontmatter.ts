@@ -1,7 +1,6 @@
 import type { DigestCategory, DigestSource } from "../digest";
 
 export type TopicFrontMatter = {
-  topic: string;
   category: DigestCategory;
   created_at: string;
   updated_at: string;
@@ -145,7 +144,6 @@ export function parseFrontMatter(markdown: string): ParsedFrontMatter {
     }
 
     const scalar = value.replace(/^['"]|['"]$/g, "");
-    if (key === "topic") metadata.topic = scalar;
     if (key === "category") metadata.category = scalar as DigestCategory;
     if (key === "created_at") metadata.created_at = scalar;
     if (key === "updated_at") metadata.updated_at = scalar;
@@ -161,7 +159,6 @@ function yamlQuote(value: string): string {
 export function serializeFrontMatter(metadata: TopicFrontMatter): string {
   return [
     "---",
-    `topic: ${yamlQuote(metadata.topic)}`,
     `category: ${metadata.category}`,
     `created_at: ${yamlQuote(metadata.created_at)}`,
     `updated_at: ${yamlQuote(metadata.updated_at)}`,

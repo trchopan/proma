@@ -9,6 +9,15 @@ export type CanonicalTopicData = {
   references: CanonicalReference[];
 };
 
+export function extractTopicTitle(markdown: string): string {
+  const titleLine = markdown
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => /^#\s+.+$/.test(line));
+
+  return titleLine?.replace(/^#\s+/, "").trim() ?? "";
+}
+
 const TIMELINE_ENTRY_PATTERN = /^\d{4}-\d{2}-\d{2}\s+-\s+.+$/;
 
 export function uniqueOrdered(values: string[]): string[] {
@@ -134,7 +143,10 @@ export function extractCanonicalTopicData(body: string): CanonicalTopicData {
   };
 }
 
-export function buildCanonicalBody(data: CanonicalTopicData): string {
+export function buildCanonicalBody(
+  topic: string,
+  data: CanonicalTopicData,
+): string {
   const summary = data.summary || "No summary yet.";
   const keyPoints =
     data.keyPoints.length > 0
@@ -152,6 +164,8 @@ export function buildCanonicalBody(data: CanonicalTopicData): string {
       : "- None";
 
   return [
+    `# ${topic}`,
+    "",
     "## Summary",
     summary,
     "",

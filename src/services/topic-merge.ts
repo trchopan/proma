@@ -11,6 +11,7 @@ import {
   buildCanonicalBody,
   type CanonicalTopicData,
   extractCanonicalTopicData,
+  extractTopicTitle,
   uniqueOrdered,
 } from "../markdown/canonical-topic";
 import {
@@ -110,11 +111,6 @@ function buildTopicFrontMatter(options: {
     updatedAt,
   } = options;
 
-  const topic =
-    existingMetadata.topic?.trim() ||
-    target.topic.trim() ||
-    (target.shortDescription?.trim() ?? "Untitled topic");
-
   const tags = normalizeTags([
     ...(existingMetadata.tags ?? []),
     ...target.tags,
@@ -126,7 +122,6 @@ function buildTopicFrontMatter(options: {
   const mergedDigestIds = uniqueOrdered([...existingDigestIds, digestId]);
 
   return {
-    topic,
     category,
     created_at: existingMetadata.created_at ?? nowIso,
     updated_at: updatedAt,
@@ -179,6 +174,10 @@ export function buildTopicMergeContent(options: {
 }): BuiltTopicMerge {
   const nowIso = (options.now ?? new Date()).toISOString();
   const parsed = parseFrontMatter(options.currentContent);
+  const topic =
+    extractTopicTitle(parsed.body) ||
+    options.target.topic.trim() ||
+    (options.target.shortDescription?.trim() ?? "Untitled topic");
   const existing = extractCanonicalTopicData(parsed.body);
   const incomingRefKeys = computeReferenceKeys(options.item);
   const incomingRefDigestIds = incomingRefKeys.map(toReferenceDigestId);
@@ -206,7 +205,7 @@ export function buildTopicMergeContent(options: {
   }
 
   const mergedCanonical = mergeCanonical(existing, options.item);
-  const body = buildCanonicalBody(mergedCanonical);
+  const body = buildCanonicalBody(topic, mergedCanonical);
 
   const stableMetadata = buildTopicFrontMatter({
     existingMetadata: parsed.metadata,
