@@ -1,5 +1,5 @@
 {
-  "name": "proma",
+  "name": "@trchopan/proma",
   "version": "0.1.0",
   "module": "index.ts",
   "type": "module",
@@ -15,6 +15,9 @@
     "src",
     "README.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "lint": "biome lint .",
     "lint:fix": "biome check --write .",
