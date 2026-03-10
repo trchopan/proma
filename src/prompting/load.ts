@@ -4,7 +4,11 @@ import type { PromaConfig, PromptPluginApi } from "./plugin";
 import { createBuiltInPromptRegistry } from "./registry";
 import type { PromptRegistry } from "./types";
 
-const DEFAULT_CONFIG_FILE = "proma.config.ts";
+const SUPPORTED_CONFIG_FILES = [
+  "proma.config.ts",
+  "proma.config.js",
+  "proma.config.mjs",
+] as const;
 
 function isPromaConfig(value: unknown): value is PromaConfig {
   if (!value || typeof value !== "object") {
@@ -17,22 +21,36 @@ function isPromaConfig(value: unknown): value is PromaConfig {
 
 export async function loadPromptRegistry(
   cwd = process.cwd(),
-  configFileName = DEFAULT_CONFIG_FILE,
+  configFileName?: string,
 ): Promise<PromptRegistry> {
   const registry = createBuiltInPromptRegistry();
-  const configPath = path.resolve(cwd, configFileName);
-  const file = Bun.file(configPath);
+  const candidateNames =
+    typeof configFileName === "string"
+      ? [configFileName]
+      : [...SUPPORTED_CONFIG_FILES];
+  let configPath: string | undefined;
 
-  if (!(await file.exists())) {
+  for (const candidateName of candidateNames) {
+    const candidatePath = path.resolve(cwd, candidateName);
+    const candidateFile = Bun.file(candidatePath);
+    if (await candidateFile.exists()) {
+      configPath = candidatePath;
+      break;
+    }
+  }
+
+  if (!configPath) {
     return registry;
   }
+
+  const selectedConfigFileName = path.basename(configPath);
 
   const loadedModule = await import(pathToFileURL(configPath).href);
   const configValue = loadedModule.default;
 
   if (!isPromaConfig(configValue)) {
     throw new Error(
-      `Invalid ${configFileName}: expected default export shape { plugins?: PromptPlugin[] }`,
+      `Invalid ${selectedConfigFileName}: expected default export shape { plugins?: PromptPlugin[] }`,
     );
   }
 
@@ -50,7 +68,7 @@ export async function loadPromptRegistry(
   for (const plugin of plugins) {
     if (!plugin || typeof plugin !== "object") {
       throw new Error(
-        `Invalid ${configFileName} plugin entry: expected object with name and setup`,
+        `Invalid ${selectedConfigFileName} plugin entry: expected object with name and setup`,
       );
     }
 
@@ -59,13 +77,13 @@ export async function loadPromptRegistry(
 
     if (typeof name !== "string" || name.trim().length === 0) {
       throw new Error(
-        `Invalid ${configFileName} plugin entry: 'name' must be a non-empty string`,
+        `Invalid ${selectedConfigFileName} plugin entry: 'name' must be a non-empty string`,
       );
     }
 
     if (typeof setup !== "function") {
       throw new Error(
-        `Invalid ${configFileName} plugin '${name}': 'setup' must be a function`,
+        `Invalid ${selectedConfigFileName} plugin '${name}': 'setup' must be a function`,
       );
     }
 

@@ -1,15 +1,74 @@
 # proma
 
+## Use proma in another repository
+
+Install as a dependency:
+
+```json
+{
+  "dependencies": {
+    "proma": "^0.1.0"
+  }
+}
+```
+
+Create `proma.config.js` in your repository root:
+
+```js
+export default {
+  plugins: [
+    {
+      name: "custom-report-tone",
+      setup(api) {
+        api.patchOperation("report", (current) => ({
+          ...current,
+          buildPrompt(context) {
+            const built = current.buildPrompt(context);
+            return {
+              ...built,
+              messages: built.messages.map((message) =>
+                message.role === "system"
+                  ? {
+                      ...message,
+                      content: `${message.content}\nUse a neutral executive tone.`,
+                    }
+                  : message,
+              ),
+            };
+          },
+        }));
+      },
+    },
+  ],
+};
+```
+
+Add scripts:
+
+```json
+{
+  "scripts": {
+    "digest": "proma digest --project ./docs --input ./docs/raw.md",
+    "merge": "proma merge --project ./docs",
+    "report": "proma report --project ./docs"
+  }
+}
+```
+
+Then run `bun run digest`, `bun run merge`, and `bun run report`.
+
+Notes:
+
+- Supported config files are `proma.config.ts`, `proma.config.js`, and `proma.config.mjs`.
+- `report` defaults to `weekly` when `--period` is omitted.
+- Set `OPENAI_API_KEY` in your environment before running commands.
+
+## Develop proma locally
+
 To install dependencies:
 
 ```bash
 bun install
-```
-
-To run:
-
-```bash
-bun run index.ts
 ```
 
 ## Digest CLI feature
@@ -24,10 +83,10 @@ Prompting and schema control is centralized in `src/prompting/`:
 
 - `src/prompting/registry.ts` contains built-in operation definitions for `digest`, `merge`, and `report`
 - `src/prompting/execute.ts` runs model calls from operation contracts
-- `src/prompting/load.ts` loads optional user plugins from `proma.config.ts`
+- `src/prompting/load.ts` loads optional user plugins from `proma.config.ts|js|mjs`
 - `src/prompting/validate.ts` validates composed registry contracts at startup
 
-Create `proma.config.ts` to customize prompting behavior via TypeScript plugins:
+Create `proma.config.ts` (or `.js`/`.mjs`) to customize prompting behavior via plugins:
 
 ```ts
 export default {
@@ -69,37 +128,37 @@ export OPENAI_API_KEY="your_api_key"
 Run stage 1 (`digest`):
 
 ```bash
-bun run index.ts digest --input ./notes.txt --project ./acme
+proma digest --input ./notes.txt --project ./acme
 ```
 
 Run stage 1 with verbose debugging logs:
 
 ```bash
-bun run index.ts digest --input ./notes.txt --project ./acme --verbose
+proma digest --input ./notes.txt --project ./acme --verbose
 ```
 
 Run stage 2/3 (`merge`):
 
 ```bash
-bun run index.ts merge --project ./acme
+proma merge --project ./acme
 ```
 
 Run stage 2/3 with verbose debugging logs:
 
 ```bash
-bun run index.ts merge --project ./acme --verbose
+proma merge --project ./acme --verbose
 ```
 
 Run report generation (`report`):
 
 ```bash
-bun run index.ts report --project ./acme --period weekly
+proma report --project ./acme --period weekly
 ```
 
 Run report generation with explicit topic inputs and base reports:
 
 ```bash
-bun run index.ts report --project ./acme --period weekly \
+proma report --project ./acme --period weekly \
   --input ./acme/planning/release-readiness.md \
   --input ./acme/discussion/incident-response.md \
   --base ./acme/reports/2026-03-01_weekly.md \
@@ -109,7 +168,7 @@ bun run index.ts report --project ./acme --period weekly \
 Optional model override:
 
 ```bash
-bun run index.ts digest --input ./notes.txt --project ./acme --model gpt-4.1-mini
+proma digest --input ./notes.txt --project ./acme --model gpt-4.1-mini
 ```
 
 Note: the digest flow uses OpenAI Structured Outputs (`json_schema`) and fails fast if the selected model does not support it.
@@ -122,7 +181,7 @@ Note: the digest flow uses OpenAI Structured Outputs (`json_schema`) and fails f
 
 Report file behavior:
 
-- `--period` is required and must be one of: `daily`, `weekly`, `bi-weekly`, `monthly`.
+- `--period` is optional; default is `weekly`. Valid values: `daily`, `weekly`, `bi-weekly`, `monthly`.
 - Repeat `--input` to target specific markdown files; when omitted, the CLI scans all markdown files under `<project>/planning`, `<project>/research`, and `<project>/discussion`.
 - Repeat `--base` to provide specific previous reports; when omitted, the CLI loads all markdown files under `<project>/reports`.
 - Report files include YAML front matter with `period`, `generated_at`, `model`, `input_files`, and `base_reports`.

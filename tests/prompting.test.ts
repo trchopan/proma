@@ -67,6 +67,51 @@ test("loadPromptRegistry applies plugin patches from proma.config.ts", async () 
   expect(system?.content).toContain("CUSTOM_RULE=1");
 });
 
+test("loadPromptRegistry applies plugin patches from proma.config.js", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "proma-plugin-js-"));
+  const configPath = path.join(dir, "proma.config.js");
+
+  await Bun.write(
+    configPath,
+    [
+      "export default {",
+      "  plugins: [",
+      "    {",
+      '      name: "custom-report-system",',
+      "      setup(api) {",
+      '        api.patchOperation("report", (current) => ({',
+      "          ...current,",
+      "          buildPrompt(context) {",
+      "            const built = current.buildPrompt(context);",
+      "            return {",
+      "              ...built,",
+      "              messages: built.messages.map((message) =>",
+      '                message.role === "system"',
+      '                  ? { ...message, content: String(message.content) + "\\nJS_CONFIG_RULE=1" }',
+      "                  : message,",
+      "              ),",
+      "            };",
+      "          },",
+      "        }));",
+      "      },",
+      "    },",
+      "  ],",
+      "};",
+    ].join("\n"),
+  );
+
+  const registry = await loadPromptRegistry(dir);
+  const built = registry.report.buildPrompt({
+    period: "weekly",
+    inputs: [],
+    baseReports: [],
+  });
+
+  const system = built.messages.find((message) => message.role === "system");
+  expect(typeof system?.content).toBe("string");
+  expect(system?.content).toContain("JS_CONFIG_RULE=1");
+});
+
 test("executePromptOperation sends built response format and parses output", async () => {
   const registry = createBuiltInPromptRegistry();
 

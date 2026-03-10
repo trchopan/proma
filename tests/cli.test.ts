@@ -100,6 +100,19 @@ test("parseReportCommandArgs parses required and repeatable args", () => {
   });
 });
 
+test("parseReportCommandArgs defaults period to weekly", () => {
+  const parsed = parseReportCommandArgs(["--project", "apollo"]);
+
+  expect(parsed).toEqual({
+    project: "apollo",
+    period: "weekly",
+    input: [],
+    base: [],
+    model: "gpt-5.2",
+    verbose: false,
+  });
+});
+
 test("parseReportCommandArgs rejects invalid period", () => {
   expect(() =>
     parseReportCommandArgs(["--project", "apollo", "--period", "quarterly"]),
@@ -166,24 +179,51 @@ test("runCli merge returns readable error for missing project arg", async () => 
   expect(errors.join("\n")).toContain("Missing required argument: --project");
 });
 
-test("runCli report returns readable error for missing period arg", async () => {
-  const errors: string[] = [];
+test("runCli report defaults period to weekly when omitted", async () => {
+  let capturedContext: unknown;
 
   const exitCode = await runCli(
     ["report", "--project", "apollo"],
-    {},
+    {
+      resolveReportInputFiles: async () => [],
+      resolveBaseReportFiles: async () => [],
+      loadReportContext: async (context) => {
+        capturedContext = context;
+        return {
+          period: context.period,
+          inputs: [],
+          baseReports: [],
+        };
+      },
+      generateReport: async () => ({
+        title: "Weekly Report",
+        executiveSummary: "Summary",
+        updatedInformation: [],
+        resolutions: [],
+        nextSteps: [],
+      }),
+      writeReportFile: async () => ({
+        absolutePath: "/tmp/apollo/reports/2026-03-10_weekly.md",
+        relativePath: "reports/2026-03-10_weekly.md",
+      }),
+    },
     {
       out: () => {
         return;
       },
-      err: (message) => {
-        errors.push(message);
+      err: () => {
+        return;
       },
     },
   );
 
-  expect(exitCode).toBe(1);
-  expect(errors.join("\n")).toContain("Missing required argument: --period");
+  expect(exitCode).toBe(0);
+  expect(capturedContext).toEqual({
+    projectRoot: expect.any(String),
+    period: "weekly",
+    inputFiles: [],
+    baseFiles: [],
+  });
 });
 
 test("runCli digest writes stage 1 files only", async () => {

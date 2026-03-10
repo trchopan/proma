@@ -86,9 +86,9 @@ function defaultReadTextFile(filePath: string): Promise<string> {
 function usage(): string {
   return [
     "Usage:",
-    "  bun run index.ts digest --input <file> --project <output-root> [--model <model>] [--verbose]",
-    "  bun run index.ts merge --project <output-root> [--model <model>] [--verbose]",
-    "  bun run index.ts report --project <output-root> --period <daily|weekly|bi-weekly|monthly> [--input <file> ...] [--base <file> ...] [--model <model>] [--verbose]",
+    "  proma digest --input <file> --project <output-root> [--model <model>] [--verbose]",
+    "  proma merge --project <output-root> [--model <model>] [--verbose]",
+    "  proma report --project <output-root> [--period <daily|weekly|bi-weekly|monthly>] [--input <file> ...] [--base <file> ...] [--model <model>] [--verbose]",
   ].join("\n");
 }
 

@@ -34,6 +34,8 @@ export type ReportArgs = {
   verbose: boolean;
 };
 
+const DEFAULT_REPORT_PERIOD: ReportPeriod = "weekly";
+
 function parseOptionValues(
   args: string[],
   config: OptionConfig,
@@ -126,7 +128,8 @@ export function parseReportCommandArgs(args: string[]): ReportArgs {
   });
 
   const project = values.get("--project")?.[0];
-  const periodValue = values.get("--period")?.[0]?.trim().toLowerCase();
+  const periodValue =
+    values.get("--period")?.[0]?.trim().toLowerCase() ?? DEFAULT_REPORT_PERIOD;
   const model = values.get("--model")?.[0] ?? DEFAULT_MODEL;
   const input = values.get("--input") ?? [];
   const base = values.get("--base") ?? [];
@@ -134,10 +137,6 @@ export function parseReportCommandArgs(args: string[]): ReportArgs {
 
   if (!project) {
     throw new Error("Missing required argument: --project");
-  }
-
-  if (!periodValue) {
-    throw new Error("Missing required argument: --period");
   }
 
   if (!(REPORT_PERIODS as readonly string[]).includes(periodValue)) {

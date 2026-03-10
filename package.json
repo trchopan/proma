@@ -1,8 +1,20 @@
 {
   "name": "proma",
+  "version": "0.1.0",
   "module": "index.ts",
   "type": "module",
-  "private": true,
+  "exports": {
+    ".": "./index.ts"
+  },
+  "bin": {
+    "proma": "./bin/proma.ts"
+  },
+  "files": [
+    "bin",
+    "index.ts",
+    "src",
+    "README.md"
+  ],
   "scripts": {
     "lint": "biome lint .",
     "lint:fix": "biome check --write .",
