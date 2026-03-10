@@ -1,4 +1,4 @@
-# proma
+# Proma - Project Management Toolkit powered by LLMs
 
 Source: ![github](https://github.com/trchopan/proma)
 
