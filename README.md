@@ -20,23 +20,45 @@ Digest summaries and key points are always generated in English, even when input
 Digest input also supports markdown images (`![alt](./image.png)`), which are loaded and included in the AI prompt.
 Missing or unsupported local images are skipped with a warning, and digest generation continues.
 
-Prompt templates are loaded from committed markdown files:
+Prompting and schema control is centralized in `src/prompting/`:
 
-- `prompts/digest.md`
-- `prompts/merge.md`
-- `prompts/report.md`
+- `src/prompting/registry.ts` contains built-in operation definitions for `digest`, `merge`, and `report`
+- `src/prompting/execute.ts` runs model calls from operation contracts
+- `src/prompting/load.ts` loads optional user plugins from `proma.config.ts`
+- `src/prompting/validate.ts` validates composed registry contracts at startup
 
-Template format:
+Create `proma.config.ts` to customize prompting behavior via TypeScript plugins:
 
-- `# {{SYSTEM}}` for the system prompt section
-- `# {{USER}}` for the user prompt section
-- `{{VARIABLE_NAME}}` placeholders for values injected at runtime
+```ts
+export default {
+  plugins: [
+    {
+      name: "custom-report-tone",
+      setup(api) {
+        api.patchOperation("report", (current) => ({
+          ...current,
+          buildPrompt(context) {
+            const built = current.buildPrompt(context);
+            return {
+              ...built,
+              messages: built.messages.map((message) =>
+                message.role === "system"
+                  ? {
+                      ...message,
+                      content: `${message.content}\nUse a neutral executive tone.`,
+                    }
+                  : message,
+              ),
+            };
+          },
+        }));
+      },
+    },
+  ],
+};
+```
 
-Available placeholders:
-
-- `prompts/digest.md`: `{{INPUT_TEXT}}`, `{{ALLOWED_SOURCES}}`
-- `prompts/merge.md`: `{{DIGEST_ITEM_JSON}}`, `{{CANDIDATE_TOPIC_FILES}}`
-- `prompts/report.md`: `{{PERIOD}}`, `{{INPUT_CONTEXT_JSON}}`, `{{BASE_REPORT_CONTEXT_JSON}}`
+Plugin order is deterministic: plugins run in declaration order and later patches can override earlier ones.
 
 Required environment variable:
 

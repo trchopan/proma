@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-
+import { createBuiltInPromptRegistry } from "../src/prompting/registry";
 import {
   generateReport,
   parseReportResponse,
@@ -84,10 +84,7 @@ test("generateReport sends strict schema with context variables", async () => {
     },
     {
       model: "gpt-4o-mini",
-      promptTemplate: {
-        system: "System report",
-        user: "Period={{PERIOD}}\n{{INPUT_CONTEXT_JSON}}\n{{BASE_REPORT_CONTEXT_JSON}}",
-      },
+      promptRegistry: createBuiltInPromptRegistry(),
     },
     async (options) => {
       captured = {
@@ -117,7 +114,7 @@ test("generateReport sends strict schema with context variables", async () => {
   const promptText = ((captured?.messages as { content: string }[]) ?? [])
     .map((message) => message.content)
     .join("\n");
-  expect(promptText).toContain("Period=weekly");
+  expect(promptText).toContain("Create a weekly project report");
   expect(promptText).toContain("planning/release.md");
   expect(promptText).toContain("2026-03-01_weekly.md");
 });

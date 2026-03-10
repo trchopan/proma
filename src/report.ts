@@ -1,9 +1,7 @@
-import { type ChatCompletionOptions, createChatCompletion } from "./ai/openai";
+import type { ChatCompletionOptions } from "./ai/openai";
 import type { Logger } from "./logging";
-import {
-  type PromptTemplateSections,
-  renderPromptTemplate,
-} from "./prompt-template";
+import { executePromptOperation } from "./prompting/execute";
+import type { PromptRegistry } from "./prompting/types";
 
 export const REPORT_PERIODS = [
   "daily",
@@ -49,10 +47,8 @@ export type ReportGeneration = {
 export type ReportGenerationOptions = {
   model: string;
   logger?: Logger;
-  promptTemplate?: PromptTemplateSections;
+  promptRegistry: PromptRegistry;
 };
-
-type ChatCompletionFn = (options: ChatCompletionOptions) => Promise<string>;
 
 export const REPORT_RESPONSE_SCHEMA = {
   type: "object",
@@ -154,53 +150,20 @@ export function renderReportMarkdown(report: ReportGeneration): string {
 export async function generateReport(
   context: ReportContextPayload,
   options: ReportGenerationOptions,
-  chatCompletion: ChatCompletionFn = createChatCompletion,
+  chatCompletion?: (options: ChatCompletionOptions) => Promise<string>,
 ): Promise<ReportGeneration> {
-  const variables = {
-    PERIOD: context.period,
-    INPUT_CONTEXT_JSON: JSON.stringify(context.inputs, null, 2),
-    BASE_REPORT_CONTEXT_JSON: JSON.stringify(context.baseReports, null, 2),
-  };
-
-  const systemPrompt = renderPromptTemplate(
-    options.promptTemplate?.system ??
-      "You generate concise project reports and must satisfy the provided response schema.",
-    variables,
-    "report system prompt",
-  );
-
-  const userPrompt = renderPromptTemplate(
-    options.promptTemplate?.user ??
-      [
-        "Create a {{PERIOD}} project report from current topic context and prior reports.",
-        "Continue narrative from base reports where applicable.",
-        "Call out updates and what has been resolved since prior reports.",
-        "Input context:",
-        "{{INPUT_CONTEXT_JSON}}",
-        "Base report context:",
-        "{{BASE_REPORT_CONTEXT_JSON}}",
-      ].join("\n\n"),
-    variables,
-    "report user prompt",
-  );
-
-  const responseText = await chatCompletion({
-    model: options.model,
-    logger: options.logger,
-    temperature: 0.2,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    responseFormat: {
-      type: "json_schema",
-      json_schema: {
-        name: "project_report",
-        strict: true,
-        schema: REPORT_RESPONSE_SCHEMA,
-      },
+  return executePromptOperation(
+    options.promptRegistry,
+    "report",
+    {
+      period: context.period,
+      inputs: context.inputs,
+      baseReports: context.baseReports,
     },
-  });
-
-  return parseReportResponse(responseText);
+    {
+      model: options.model,
+      logger: options.logger,
+      chatCompletion,
+    },
+  );
 }

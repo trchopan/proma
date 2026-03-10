@@ -1,9 +1,7 @@
-import { type ChatCompletionOptions, createChatCompletion } from "./ai/openai";
+import type { ChatCompletionOptions } from "./ai/openai";
 import type { Logger } from "./logging";
-import {
-  type PromptTemplateSections,
-  renderPromptTemplate,
-} from "./prompt-template";
+import { executePromptOperation } from "./prompting/execute";
+import type { PromptRegistry } from "./prompting/types";
 
 export const DIGEST_CATEGORIES = [
   "planning",
@@ -39,7 +37,7 @@ export type DigestItem = {
 export type DigestGenerationOptions = {
   model: string;
   logger?: Logger;
-  promptTemplate?: PromptTemplateSections;
+  promptRegistry: PromptRegistry;
 };
 
 export type DigestInputImage = {
@@ -72,10 +70,8 @@ export type TopicRoutingTarget = {
 export type TopicRoutingOptions = {
   model: string;
   logger?: Logger;
-  promptTemplate?: PromptTemplateSections;
+  promptRegistry: PromptRegistry;
 };
-
-type ChatCompletionFn = (options: ChatCompletionOptions) => Promise<string>;
 
 export const DIGEST_RESPONSE_SCHEMA = {
   type: "object",
@@ -390,79 +386,25 @@ export function renderDigestMarkdown(item: DigestItem): string {
 export async function generateDigestItems(
   input: DigestGenerationInput,
   options: DigestGenerationOptions,
-  chatCompletion: ChatCompletionFn = createChatCompletion,
+  chatCompletion?: (options: ChatCompletionOptions) => Promise<string>,
 ): Promise<DigestItem[]> {
   const inputText = typeof input === "string" ? input : input.text;
   const images = typeof input === "string" ? [] : (input.images ?? []);
 
-  const digestVariables = {
-    ALLOWED_SOURCES: DIGEST_SOURCES.join(", "),
-    INPUT_TEXT: inputText,
-  };
-
-  const systemPrompt = renderPromptTemplate(
-    options.promptTemplate?.system ??
-      "You classify notes into digest items and must satisfy the provided response schema. Output all human-readable text in English.",
-    digestVariables,
-    "digest system prompt",
-  );
-
-  const prompt = renderPromptTemplate(
-    options.promptTemplate?.user ??
-      [
-        "Split the user content into one or more digest items.",
-        "Return concise and meaningful digest items based on intent.",
-        "Prefer fewer, meaningful digest items and avoid over-fragmenting.",
-        "Always write summary, keyPoints, and timeline context in English, even if the user content is in another language.",
-        "Timeline is optional when date information is unknown.",
-        "When timeline entries are present, each entry must use this strict format: YYYY-MM-DD - <context>.",
-        "Each item must include a source value from: {{ALLOWED_SOURCES}}.",
-        "If references are unknown, return an empty array.",
-        "User content:",
-        "{{INPUT_TEXT}}",
-      ].join("\n\n"),
-    digestVariables,
-    "digest user prompt",
-  );
-
-  const userContent =
-    images.length === 0
-      ? prompt
-      : [
-          { type: "text" as const, text: prompt },
-          ...images.map((image) => ({
-            type: "image_url" as const,
-            image_url: {
-              url: image.url,
-            },
-          })),
-        ];
-
-  const responseText = await chatCompletion({
-    model: options.model,
-    logger: options.logger,
-    temperature: 0.2,
-    messages: [
-      {
-        role: "system",
-        content: systemPrompt,
-      },
-      {
-        role: "user",
-        content: userContent,
-      },
-    ],
-    responseFormat: {
-      type: "json_schema",
-      json_schema: {
-        name: "digest_items",
-        strict: true,
-        schema: DIGEST_RESPONSE_SCHEMA,
-      },
+  return executePromptOperation(
+    options.promptRegistry,
+    "digest",
+    {
+      inputText,
+      images,
+      allowedSources: DIGEST_SOURCES,
     },
-  });
-
-  return parseDigestItemsResponse(responseText);
+    {
+      model: options.model,
+      logger: options.logger,
+      chatCompletion,
+    },
+  );
 }
 
 export function parseTopicRoutingResponse(
@@ -570,72 +512,19 @@ export async function generateTopicTargets(
   item: DigestItem,
   candidates: TopicRoutingCandidate[],
   options: TopicRoutingOptions,
-  chatCompletion: ChatCompletionFn = createChatCompletion,
+  chatCompletion?: (options: ChatCompletionOptions) => Promise<string>,
 ): Promise<TopicRoutingTarget[]> {
-  const candidateText =
-    candidates.length > 0
-      ? candidates
-          .map((candidate) => {
-            const tagsText =
-              candidate.tags.length > 0 ? candidate.tags.join(", ") : "none";
-            return `- slug: ${candidate.slug}; topic: ${candidate.topic}; tags: ${tagsText}; summary: ${candidate.summary}`;
-          })
-          .join("\n")
-      : "- No existing topic files";
-
-  const routingVariables = {
-    DIGEST_ITEM_JSON: JSON.stringify(item, null, 2),
-    CANDIDATE_TOPIC_FILES: candidateText,
-  };
-
-  const systemPrompt = renderPromptTemplate(
-    options.promptTemplate?.system ??
-      "You route digest items to topic files and must satisfy the provided response schema. Output all human-readable text in English.",
-    routingVariables,
-    "merge system prompt",
-  );
-
-  const prompt = renderPromptTemplate(
-    options.promptTemplate?.user ??
-      [
-        "Route this digest item into one or more topic files.",
-        "Prefer update_existing when a candidate clearly matches.",
-        "Use create_new when no candidate is a close match.",
-        "You may return multiple targets if the digest item belongs in multiple existing topics.",
-        "For create_new, provide shortDescription suitable for a kebab-case filename.",
-        "Return tags as concise lowercase phrases.",
-        "Digest item:",
-        "{{DIGEST_ITEM_JSON}}",
-        "Candidate topic files:",
-        "{{CANDIDATE_TOPIC_FILES}}",
-      ].join("\n\n"),
-    routingVariables,
-    "merge user prompt",
-  );
-
-  const responseText = await chatCompletion({
-    model: options.model,
-    logger: options.logger,
-    temperature: 0.2,
-    messages: [
-      {
-        role: "system",
-        content: systemPrompt,
-      },
-      {
-        role: "user",
-        content: prompt,
-      },
-    ],
-    responseFormat: {
-      type: "json_schema",
-      json_schema: {
-        name: "topic_routing_targets",
-        strict: true,
-        schema: TOPIC_ROUTING_RESPONSE_SCHEMA,
-      },
+  return executePromptOperation(
+    options.promptRegistry,
+    "merge",
+    {
+      item,
+      candidates,
     },
-  });
-
-  return parseTopicRoutingResponse(responseText, candidates);
+    {
+      model: options.model,
+      logger: options.logger,
+      chatCompletion,
+    },
+  );
 }
