@@ -15,6 +15,7 @@ import {
   supportsAnsiColor,
 } from "./cli/diff-preview";
 import { loadInputImages } from "./cli/image-loader";
+import { loadProjectConfig, resolveDigestAllowedSources } from "./config";
 import {
   generateDigestItems,
   generateMergeContent,
@@ -121,6 +122,7 @@ async function runDigestCommand(
   deps: CliDependencies,
   logger: Logger,
   promptRegistry: PromptRegistry,
+  allowedSources: readonly string[],
 ): Promise<number> {
   const inputPath = path.resolve(parsed.input);
   const projectRoot = path.resolve(parsed.project);
@@ -160,6 +162,7 @@ async function runDigestCommand(
       logger,
       promptRegistry,
       dryRun: parsed.dryRun,
+      allowedSources,
     },
   );
 
@@ -179,6 +182,7 @@ async function runDigestCommand(
   const digestNotes = await deps.writeDigestItems({
     projectRoot,
     items,
+    allowedSources,
   });
 
   await logger.progress(
@@ -199,13 +203,16 @@ async function runMergeCommand(
   deps: CliDependencies,
   logger: Logger,
   promptRegistry: PromptRegistry,
+  allowedSources: readonly string[],
 ): Promise<number> {
   const projectRoot = path.resolve(parsed.project);
   await logger.progress(
     "merge.list_pending",
     "Scanning pending digest notes...",
   );
-  const digestNotes = await deps.listPendingDigestItems(projectRoot);
+  const digestNotes = await deps.listPendingDigestItems(projectRoot, {
+    allowedSources,
+  });
   await logger.progress(
     "merge.pending_count",
     `Found ${digestNotes.length} pending digest file(s).`,
@@ -224,6 +231,7 @@ async function runMergeCommand(
     const candidates = await deps.listTopicCandidates(
       projectRoot,
       digestNote.item.category,
+      allowedSources,
     );
     await logger.debug("merge.candidates", "Loaded topic candidates", {
       category: digestNote.item.category,
@@ -321,6 +329,7 @@ async function runMergeCommand(
       item: itemForMerge,
       target: targetForMerge,
       mergedDigestId: digestNote.relativePath,
+      allowedSources,
     });
 
     if (!plan.hasChanges) {
@@ -382,6 +391,9 @@ async function runMergeCommand(
       await deps.markDigestItemMerged(
         digestNote.absolutePath,
         mergedTopicPathsForStage,
+        {
+          allowedSources,
+        },
       );
       completedStagedItems += 1;
       await logger.progress(
@@ -553,19 +565,25 @@ export async function runCli(
   }
 
   try {
-    const promptRegistry = createBuiltInPromptRegistry();
-    deps.validatePromptRegistry(promptRegistry);
-
     if (command === "digest") {
       const parsed = {
         ...parseDigestCommandArgs(normalizedArgvWithoutGlobalFlags.slice(1)),
         dryRun: hasGlobalDryRun,
       };
+      const projectConfig = await loadProjectConfig(
+        path.resolve(parsed.project),
+      );
+      const allowedSources = resolveDigestAllowedSources(projectConfig);
+      const promptRegistry = createBuiltInPromptRegistry({
+        allowedSources,
+      });
+      deps.validatePromptRegistry(promptRegistry);
       const exitCode = await runDigestCommand(
         parsed,
         deps,
         logger,
         promptRegistry,
+        allowedSources,
       );
       await logger.debug("cli.complete", "Command completed successfully", {
         command,
@@ -578,6 +596,14 @@ export async function runCli(
         ...parseReportCommandArgs(normalizedArgvWithoutGlobalFlags.slice(1)),
         dryRun: hasGlobalDryRun,
       };
+      const projectConfig = await loadProjectConfig(
+        path.resolve(parsed.project),
+      );
+      const allowedSources = resolveDigestAllowedSources(projectConfig);
+      const promptRegistry = createBuiltInPromptRegistry({
+        allowedSources,
+      });
+      deps.validatePromptRegistry(promptRegistry);
       const exitCode = await runReportCommand(
         parsed,
         deps,
@@ -594,11 +620,18 @@ export async function runCli(
       ...parseMergeCommandArgs(normalizedArgvWithoutGlobalFlags.slice(1)),
       dryRun: hasGlobalDryRun,
     };
+    const projectConfig = await loadProjectConfig(path.resolve(parsed.project));
+    const allowedSources = resolveDigestAllowedSources(projectConfig);
+    const promptRegistry = createBuiltInPromptRegistry({
+      allowedSources,
+    });
+    deps.validatePromptRegistry(promptRegistry);
     const exitCode = await runMergeCommand(
       parsed,
       deps,
       logger,
       promptRegistry,
+      allowedSources,
     );
     await logger.debug("cli.complete", "Command completed successfully", {
       command,

@@ -16,7 +16,7 @@ import {
   MERGE_CONTENT_RESPONSE_SCHEMA,
   TOPIC_ROUTING_RESPONSE_SCHEMA,
 } from "$/digest/schemas";
-import type { DigestItem } from "$/digest/types";
+import { DIGEST_SOURCES, type DigestItem } from "$/digest/types";
 import { createBuiltInPromptRegistry } from "$/prompting/registry";
 
 test("parseDigestItemsResponse accepts structured items object", () => {
@@ -63,6 +63,28 @@ test("parseDigestItemsResponse rejects invalid source", () => {
   expect(() => parseDigestItemsResponse(response)).toThrow(
     "Digest item contained invalid source",
   );
+});
+
+test("parseDigestItemsResponse accepts configured custom source", () => {
+  const response = JSON.stringify({
+    items: [
+      {
+        category: "planning",
+        source: "jira",
+        summary: "Track release blockers",
+        keyPoints: ["Capture owner"],
+        timeline: ["2026-04-15 - Blocker triage"],
+        references: [{ source: "jira", link: "https://example.com/TICKET-1" }],
+      },
+    ],
+  });
+
+  const items = parseDigestItemsResponse(response, {
+    allowedSources: [...DIGEST_SOURCES, "jira"],
+  });
+
+  expect(items[0]?.source).toBe("jira");
+  expect(items[0]?.references[0]?.source).toBe("jira");
 });
 
 test("parseDigestItemsResponse rejects invalid category", () => {

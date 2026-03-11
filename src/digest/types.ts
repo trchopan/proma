@@ -10,7 +10,7 @@ export const DIGEST_CATEGORIES = [
 export const DIGEST_SOURCES = ["slack", "wiki", "git", "document"] as const;
 
 export type DigestCategory = (typeof DIGEST_CATEGORIES)[number];
-export type DigestSource = (typeof DIGEST_SOURCES)[number];
+export type DigestSource = string;
 
 export type DigestReference = {
   source: DigestSource;

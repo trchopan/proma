@@ -69,12 +69,13 @@ export function governTags(options: {
   return uniqueOrdered([...reused, ...baseline, ...newTags]).slice(0, maxTags);
 }
 
-function normalizeSources(sources: string[]): DigestSource[] {
+function normalizeSourcesWithAllowed(
+  sources: string[],
+  allowedSources: readonly string[],
+): DigestSource[] {
   const normalized = sources
     .map((value) => value.trim().toLowerCase())
-    .filter((value): value is DigestSource =>
-      (DIGEST_SOURCES as readonly string[]).includes(value),
-    );
+    .filter((value): value is DigestSource => allowedSources.includes(value));
 
   return [...new Set(normalized)].sort() as DigestSource[];
 }
@@ -141,6 +142,7 @@ function buildTopicContent(options: {
   updatedAt: string;
   topic: string;
   canonical: CanonicalTopicData;
+  allowedSources: readonly string[];
 }): string {
   const metadata = buildTopicFrontMatter({
     existingMetadata: options.existingMetadata,
@@ -151,6 +153,7 @@ function buildTopicContent(options: {
     mergedDigestId: options.mergedDigestId,
     existingMergedDigestIds: options.existingMergedDigestIds,
     updatedAt: options.updatedAt,
+    allowedSources: options.allowedSources,
   });
   const body = buildCanonicalBody(options.topic, options.canonical);
   return `${serializeFrontMatter(metadata)}${body.trim()}\n`;
@@ -165,6 +168,7 @@ function buildTopicFrontMatter(options: {
   mergedDigestId: string;
   existingMergedDigestIds: string[];
   updatedAt: string;
+  allowedSources: readonly string[];
 }): TopicFrontMatter {
   const {
     existingMetadata,
@@ -175,16 +179,17 @@ function buildTopicFrontMatter(options: {
     mergedDigestId,
     existingMergedDigestIds,
     updatedAt,
+    allowedSources,
   } = options;
 
   const tags = normalizeTags([
     ...(existingMetadata.tags ?? []),
     ...target.tags,
   ]);
-  const sources = normalizeSources([
-    ...(existingMetadata.sources ?? []),
-    item.source,
-  ]);
+  const sources = normalizeSourcesWithAllowed(
+    [...(existingMetadata.sources ?? []), item.source],
+    allowedSources,
+  );
   const mergedDigestIds = uniqueOrdered([
     ...existingMergedDigestIds,
     mergedDigestId,
@@ -256,14 +261,21 @@ export function buildTopicMergeContent(options: {
   target: TopicRoutingTarget;
   mergedDigestId: string;
   now?: Date;
+  allowedSources?: readonly string[];
 }): BuiltTopicMerge {
   const nowIso = (options.now ?? new Date()).toISOString();
+  const allowedSources =
+    options.allowedSources && options.allowedSources.length > 0
+      ? [...options.allowedSources]
+      : [...DIGEST_SOURCES];
   const parsed = parseFrontMatter(options.currentContent);
   const topic =
     extractTopicTitle(parsed.body) ||
     options.target.topic.trim() ||
     (options.target.shortDescription?.trim() ?? "Untitled topic");
-  const existing = extractCanonicalTopicData(parsed.body);
+  const existing = extractCanonicalTopicData(parsed.body, {
+    allowedSources,
+  });
   const existingMergedDigestIds = collectExistingMergedDigestIds(
     parsed.metadata.digested_note_paths ?? [],
   );
@@ -294,6 +306,7 @@ export function buildTopicMergeContent(options: {
     mergedDigestId: options.mergedDigestId,
     existingMergedDigestIds,
     updatedAt: parsed.metadata.updated_at ?? nowIso,
+    allowedSources,
     topic,
     canonical: mergedCanonical,
   });
@@ -315,6 +328,7 @@ export function buildTopicMergeContent(options: {
       mergedDigestId: options.mergedDigestId,
       existingMergedDigestIds,
       updatedAt: nowIso,
+      allowedSources,
       topic,
       canonical: mergedCanonical,
     }),
