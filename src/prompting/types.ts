@@ -65,8 +65,8 @@ export type PromptBuildResult = {
 /**
  * Full definition for one prompt operation.
  *
- * Plugin overrides and patches must preserve this contract so validation can
- * confirm registry correctness before commands run.
+ * Validation uses this contract to confirm registry correctness before
+ * commands run.
  */
 export type OperationDefinition<K extends ProcessingKind> = {
   kind: K;
@@ -81,8 +81,7 @@ export type OperationDefinition<K extends ProcessingKind> = {
 /**
  * Registry of all required prompt operations.
  *
- * Every kind (`digest`, `merge`, `report`) must exist and remain valid after
- * plugin composition.
+ * Every kind (`digest`, `merge`, `report`) must exist and remain valid.
  */
 export type PromptRegistry = {
   [K in ProcessingKind]: OperationDefinition<K>;
