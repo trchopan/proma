@@ -81,6 +81,7 @@ test("writeStageOneDigestItems writes to notes directory", async () => {
     expect(content).toContain("category: research");
     expect(content).toContain("source: slack");
     expect(content).toContain("merged: false");
+    expect(content).toContain("merged_topic_paths:");
   });
 });
 
@@ -111,7 +112,13 @@ test("listPendingStageOneDigestItems returns only unmerged staged notes", async 
       now: new Date("2026-03-09T10:00:00Z"),
     });
 
-    await markStageOneDigestItemMerged(written[0]?.absolutePath ?? "");
+    await markStageOneDigestItemMerged(written[0]?.absolutePath ?? "", [
+      "topics/planning/sprint-goals.md",
+    ]);
+
+    const mergedContent = await Bun.file(written[0]?.absolutePath ?? "").text();
+    expect(mergedContent).toContain("merged_topic_paths:");
+    expect(mergedContent).toContain("topics/planning/sprint-goals.md");
 
     const pending = await listPendingStageOneDigestItems(dir);
 
@@ -180,6 +187,7 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
         references: [],
       },
       target,
+      mergedDigestId: "notes/discussion_2026-03-09_1.md",
       now: new Date("2026-03-09T10:00:00Z"),
     });
 
@@ -197,6 +205,7 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
     expect(plan.proposedContent).toContain("## Timeline");
     expect(plan.proposedContent).toContain("## References");
     expect(plan.proposedContent).toContain("merged_digest_ids:");
+    expect(plan.proposedContent).toContain("notes/discussion_2026-03-09_1.md");
     expect(plan.proposedContent).not.toContain("source_refs:");
     expect(plan.proposedContent).not.toContain("merged_ingest_ids:");
     expect(plan.hasChanges).toBe(true);
@@ -227,7 +236,7 @@ test("prepareTopicMerge is idempotent for same reference", async () => {
         "sources:",
         "  - slack",
         "merged_digest_ids:",
-        "  - 'refs:slack: https://example.com/thread'",
+        "  - 'notes/planning_2026-03-09_1.md'",
         "---",
         "",
         "# Release Policy",
@@ -264,6 +273,7 @@ test("prepareTopicMerge is idempotent for same reference", async () => {
         topic: "Release Policy",
         tags: ["release"],
       },
+      mergedDigestId: "notes/planning_2026-03-09_2.md",
       now: new Date("2026-03-09T10:00:00Z"),
     });
 
@@ -288,6 +298,7 @@ test("prepareTopicMerge is idempotent for same reference", async () => {
         topic: "Release Policy",
         tags: ["release"],
       },
+      mergedDigestId: "notes/planning_2026-03-09_3.md",
       now: new Date("2026-03-09T10:05:00Z"),
     });
 

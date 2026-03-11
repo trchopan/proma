@@ -26,6 +26,7 @@ export type PrepareTopicMergeOptions = {
   category: DigestCategory;
   item: DigestItem;
   target: TopicRoutingTarget;
+  mergedDigestId: string;
   now?: Date;
 };
 
@@ -113,6 +114,7 @@ export async function prepareTopicMerge(
     category: options.category,
     item: options.item,
     target: options.target,
+    mergedDigestId: options.mergedDigestId,
     now: options.now,
   });
 
