@@ -25,7 +25,7 @@ test("buildTopicMergeContent is no-op when digest id already merged", () => {
     "  - 'release'",
     "sources:",
     "  - slack",
-    "merged_digest_ids:",
+    "digested_note_paths:",
     "  - 'notes/planning_2026-03-09_1.md'",
     "---",
     "",
@@ -120,7 +120,7 @@ test("buildTopicMergeContent ignores legacy source_refs when merging", () => {
   });
 
   expect(result.hasChanges).toBe(true);
-  expect(result.proposedContent).toContain("merged_digest_ids:");
+  expect(result.proposedContent).toContain("digested_note_paths:");
   expect(result.proposedContent).toContain("notes/planning_2026-03-09_2.md");
   expect(result.proposedContent).not.toContain("source_refs:");
 });
@@ -135,7 +135,7 @@ test("buildTopicMergeContent emits references in deterministic order", () => {
     "  - 'release'",
     "sources:",
     "  - slack",
-    "merged_digest_ids:",
+    "digested_note_paths:",
     "---",
     "",
     "# Release Policy",

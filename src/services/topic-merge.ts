@@ -182,7 +182,7 @@ function buildTopicFrontMatter(options: {
     updated_at: updatedAt,
     tags,
     sources,
-    merged_digest_ids: mergedDigestIds,
+    digested_note_paths: mergedDigestIds,
   };
 }
 
@@ -251,7 +251,7 @@ export function buildTopicMergeContent(options: {
     (options.target.shortDescription?.trim() ?? "Untitled topic");
   const existing = extractCanonicalTopicData(parsed.body);
   const existingMergedDigestIds = collectExistingMergedDigestIds(
-    parsed.metadata.merged_digest_ids ?? [],
+    parsed.metadata.digested_note_paths ?? [],
   );
   const existingReferenceDigestIds = collectReferenceDigestIds(
     existing.references,

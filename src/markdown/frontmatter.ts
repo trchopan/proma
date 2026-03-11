@@ -6,7 +6,7 @@ export type TopicFrontMatter = {
   updated_at: string;
   tags: string[];
   sources: DigestSource[];
-  merged_digest_ids: string[];
+  digested_note_paths: string[];
 };
 
 export type ParsedTopicMetadata = Partial<TopicFrontMatter> & {};
@@ -85,7 +85,12 @@ export function parseFrontMatter(markdown: string): ParsedFrontMatter {
 
   const metadata: ParsedTopicMetadata = {};
   const lines = frontMatter.split("\n");
-  const arrayKeys = new Set(["tags", "sources", "merged_digest_ids"]);
+  const arrayKeys = new Set([
+    "tags",
+    "sources",
+    "digested_note_paths",
+    "merged_digest_ids",
+  ]);
 
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i]?.trim() ?? "";
@@ -107,8 +112,10 @@ export function parseFrontMatter(markdown: string): ParsedFrontMatter {
         if (key === "tags") metadata.tags = parsedInline;
         if (key === "sources")
           metadata.sources = parsedInline as DigestSource[];
+        if (key === "digested_note_paths")
+          metadata.digested_note_paths = parsedInline;
         if (key === "merged_digest_ids")
-          metadata.merged_digest_ids = parsedInline;
+          metadata.digested_note_paths = parsedInline;
         continue;
       }
 
@@ -125,7 +132,8 @@ export function parseFrontMatter(markdown: string): ParsedFrontMatter {
 
       if (key === "tags") metadata.tags = values;
       if (key === "sources") metadata.sources = values as DigestSource[];
-      if (key === "merged_digest_ids") metadata.merged_digest_ids = values;
+      if (key === "digested_note_paths") metadata.digested_note_paths = values;
+      if (key === "merged_digest_ids") metadata.digested_note_paths = values;
       continue;
     }
 
@@ -152,8 +160,8 @@ export function serializeFrontMatter(metadata: TopicFrontMatter): string {
     ...metadata.tags.map((tag) => `  - ${yamlQuote(tag)}`),
     "sources:",
     ...metadata.sources.map((source) => `  - ${source}`),
-    "merged_digest_ids:",
-    ...metadata.merged_digest_ids.map((id) => `  - ${yamlQuote(id)}`),
+    "digested_note_paths:",
+    ...metadata.digested_note_paths.map((id) => `  - ${yamlQuote(id)}`),
     "---",
     "",
   ].join("\n");

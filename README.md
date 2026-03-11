@@ -145,8 +145,8 @@ Stage-1 note behavior:
 
 Topic file behavior:
 
-- Topic files include YAML front matter metadata (`category`, `created_at`, `updated_at`, `tags`, `sources`, `merged_digest_ids`).
-- `merged_digest_ids` stores merged stage-note IDs (project-relative note paths such as `notes/planning_2026-03-09_1.md`).
+- Topic files include YAML front matter metadata (`category`, `created_at`, `updated_at`, `tags`, `sources`, `digested_note_paths`).
+- `digested_note_paths` stores merged stage-note IDs (project-relative note paths such as `notes/planning_2026-03-09_1.md`).
 - The topic name is stored in the markdown level-1 title (`# ...`) at the top of the file body.
 - Tag metadata is normalized to lowercase kebab-case, deduplicated, and sorted.
 - New topic slugs are normalized to kebab-case and capped at 100 characters.
