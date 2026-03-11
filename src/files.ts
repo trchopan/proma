@@ -13,10 +13,12 @@ export {
   writeReportFile,
 } from "./storage/report-files";
 export {
+  collectCategoryTagPool,
   listTopicCandidates,
   type PreparedTopicMerge,
   type PrepareTopicMergeOptions,
   prepareTopicMerge,
+  rankTopicCandidates,
   slugifyTopic,
   type TopicCandidate,
   writePreparedTopicMerge,

@@ -4,8 +4,11 @@ import {
   DIGEST_RESPONSE_SCHEMA,
   type DigestItem,
   generateDigestItems,
-  generateTopicTargets,
+  generateMergeContent,
+  generateTopicTarget,
+  MERGE_CONTENT_RESPONSE_SCHEMA,
   parseDigestItemsResponse,
+  parseMergeContentResponse,
   parseTopicRoutingResponse,
   renderDigestMarkdown,
   TOPIC_ROUTING_RESPONSE_SCHEMA,
@@ -252,14 +255,12 @@ test("generateDigestItems includes image parts for multimodal prompt", async () 
 
 test("parseTopicRoutingResponse rejects unknown slug for update target", () => {
   const response = JSON.stringify({
-    targets: [
-      {
-        action: "update_existing",
-        slug: "unknown-topic",
-        topic: "Unknown",
-        tags: [],
-      },
-    ],
+    target: {
+      action: "update_existing",
+      slug: "unknown-topic",
+      topic: "Unknown",
+      tags: [],
+    },
   });
 
   expect(() =>
@@ -269,12 +270,15 @@ test("parseTopicRoutingResponse rejects unknown slug for update target", () => {
         topic: "Known",
         tags: [],
         summary: "Known summary",
+        keyPoints: [],
+        timeline: [],
+        references: [],
       },
     ]),
   ).toThrow("unknown slug");
 });
 
-test("generateTopicTargets passes candidate slugs and strict schema", async () => {
+test("generateTopicTarget passes candidate slugs and strict schema", async () => {
   let capturedOptions:
     | {
         messages?: unknown;
@@ -282,7 +286,7 @@ test("generateTopicTargets passes candidate slugs and strict schema", async () =
       }
     | undefined;
 
-  const targets = await generateTopicTargets(
+  const target = await generateTopicTarget(
     {
       category: "planning",
       source: "slack",
@@ -297,6 +301,9 @@ test("generateTopicTargets passes candidate slugs and strict schema", async () =
         topic: "Release Readiness",
         tags: ["release"],
         summary: "Release checklist",
+        keyPoints: ["Confirm QA readiness"],
+        timeline: ["2026-04-01 - Checklist created"],
+        references: [],
       },
     ],
     {
@@ -310,31 +317,27 @@ test("generateTopicTargets passes candidate slugs and strict schema", async () =
       };
 
       return JSON.stringify({
-        targets: [
-          {
-            action: "update_existing",
-            slug: "release-readiness",
-            topic: "Release Readiness",
-            tags: ["release"],
-          },
-        ],
+        target: {
+          action: "update_existing",
+          slug: "release-readiness",
+          topic: "Release Readiness",
+          tags: ["release"],
+        },
       });
     },
   );
 
-  expect(targets).toEqual([
-    {
-      action: "update_existing",
-      slug: "release-readiness",
-      topic: "Release Readiness",
-      tags: ["release"],
-    },
-  ]);
+  expect(target).toEqual({
+    action: "update_existing",
+    slug: "release-readiness",
+    topic: "Release Readiness",
+    tags: ["release"],
+  });
 
   expect(capturedOptions?.responseFormat).toEqual({
     type: "json_schema",
     json_schema: {
-      name: "topic_routing_targets",
+      name: "topic_routing_target",
       strict: true,
       schema: TOPIC_ROUTING_RESPONSE_SCHEMA,
     },
@@ -348,6 +351,79 @@ test("generateTopicTargets passes candidate slugs and strict schema", async () =
 
   expect(promptText).toContain("You route digest items to topic files");
   expect(promptText).toContain("release-readiness");
+});
+
+test("parseMergeContentResponse validates canonical merge payload", () => {
+  const response = JSON.stringify({
+    summary: "Merged release policy summary",
+    keyPoints: ["Keep monthly cadence"],
+    timeline: ["2026-03-13 - Publish decision"],
+    references: [{ source: "slack", link: "https://example.com/thread" }],
+    tags: ["release-cadence", "hotfix-process"],
+  });
+
+  const parsed = parseMergeContentResponse(response);
+
+  expect(parsed.summary).toBe("Merged release policy summary");
+  expect(parsed.timeline).toEqual(["2026-03-13 - Publish decision"]);
+  expect(parsed.references).toEqual([
+    { source: "slack", link: "https://example.com/thread" },
+  ]);
+});
+
+test("generateMergeContent uses strict schema", async () => {
+  let capturedOptions:
+    | {
+        responseFormat?: unknown;
+      }
+    | undefined;
+
+  const output = await generateMergeContent(
+    {
+      category: "planning",
+      topic: "Release Cadence Policy",
+      tags: ["release-cadence"],
+      existing: {
+        summary: "Existing summary",
+        keyPoints: [],
+        timeline: [],
+        references: [],
+      },
+      incoming: {
+        category: "planning",
+        source: "slack",
+        summary: "Incoming summary",
+        keyPoints: ["Keep cadence"],
+        timeline: ["2026-03-13 - Decision"],
+        references: [],
+      },
+      tagPool: ["release-cadence"],
+    },
+    {
+      model: "gpt-4o-mini",
+      promptRegistry: createBuiltInPromptRegistry(),
+    },
+    async (options) => {
+      capturedOptions = { responseFormat: options.responseFormat };
+      return JSON.stringify({
+        summary: "Refined summary",
+        keyPoints: ["Keep cadence"],
+        timeline: ["2026-03-13 - Decision"],
+        references: [],
+        tags: ["release-cadence"],
+      });
+    },
+  );
+
+  expect(output.summary).toBe("Refined summary");
+  expect(capturedOptions?.responseFormat).toEqual({
+    type: "json_schema",
+    json_schema: {
+      name: "topic_merge_content",
+      strict: true,
+      schema: MERGE_CONTENT_RESPONSE_SCHEMA,
+    },
+  });
 });
 
 test("parseDigestItemsResponse rejects invalid timeline format", () => {

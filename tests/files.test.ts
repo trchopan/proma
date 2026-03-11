@@ -6,11 +6,13 @@ import path from "node:path";
 import type { DigestItem, TopicRoutingTarget } from "../src/digest";
 import {
   allocateNextIndex,
+  collectCategoryTagPool,
   listPendingDigestItems,
   listTopicCandidates,
   loadReportContext,
   markDigestItemMerged,
   prepareTopicMerge,
+  rankTopicCandidates,
   resolveBaseReportFiles,
   resolveReportInputFiles,
   slugifyTopic,
@@ -161,9 +163,73 @@ test("listTopicCandidates reads topic front matter", async () => {
         topic: "Release Readiness",
         tags: ["qa", "release"],
         summary: "Release readiness baseline.",
+        keyPoints: [],
+        timeline: [],
+        references: [],
       },
     ]);
   });
+});
+
+test("rankTopicCandidates prioritizes overlapping references and tokens", () => {
+  const ranked = rankTopicCandidates(
+    {
+      category: "planning",
+      source: "slack",
+      summary: "Release cadence policy with hotfix rules",
+      keyPoints: ["Skip monthly release without agenda"],
+      timeline: ["2026-03-13 - Publish decision"],
+      references: [{ source: "slack", link: "https://example.com/thread" }],
+    },
+    [
+      {
+        slug: "release-plan",
+        topic: "Release Plan",
+        tags: ["release-plan"],
+        summary: "Task schedule for v1.13",
+        keyPoints: ["Assign PIC"],
+        timeline: ["2026-03-10 - Start execution"],
+        references: [],
+      },
+      {
+        slug: "release-cadence-policy",
+        topic: "Release cadence policy",
+        tags: ["release-cadence", "hotfix-process"],
+        summary: "Policy for skipping releases and using hotfixes",
+        keyPoints: ["Skip when no agenda"],
+        timeline: ["2026-03-13 - Publish decision"],
+        references: [{ source: "slack", link: "https://example.com/thread" }],
+      },
+    ],
+    8,
+  );
+
+  expect(ranked[0]?.slug).toBe("release-cadence-policy");
+});
+
+test("collectCategoryTagPool normalizes and deduplicates tags", () => {
+  const tags = collectCategoryTagPool([
+    {
+      slug: "a",
+      topic: "A",
+      tags: ["Release Cadence", "release-cadence"],
+      summary: "A",
+      keyPoints: [],
+      timeline: [],
+      references: [],
+    },
+    {
+      slug: "b",
+      topic: "B",
+      tags: ["Hotfix Process"],
+      summary: "B",
+      keyPoints: [],
+      timeline: [],
+      references: [],
+    },
+  ]);
+
+  expect(tags).toEqual(["hotfix-process", "release-cadence"]);
 });
 
 test("prepareTopicMerge creates normalized front matter and merged body", async () => {

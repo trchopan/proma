@@ -386,14 +386,21 @@ test("runCli merge processes pending digest notes", async () => {
         mergedStageNotes.push(absolutePath);
       },
       listTopicCandidates: async () => [],
-      generateTopicTargets: async () => [
-        {
-          action: "create_new",
-          shortDescription: "sprint-goals",
-          topic: "Sprint Goals",
-          tags: ["sprint"],
-        },
-      ],
+      rankTopicCandidates: (_item, candidates) => candidates,
+      collectCategoryTagPool: () => [],
+      generateTopicTarget: async () => ({
+        action: "create_new",
+        shortDescription: "sprint-goals",
+        topic: "Sprint Goals",
+        tags: ["sprint"],
+      }),
+      generateMergeContent: async () => ({
+        summary: "Plan sprint goals.",
+        keyPoints: ["Align scope"],
+        timeline: ["2026-03-09 - Sprint planning kickoff"],
+        references: [],
+        tags: ["sprint"],
+      }),
       prepareTopicMerge: async () => ({
         targetPath: "/tmp/apollo/topics/planning/sprint-goals.md",
         relativeTargetPath: "topics/planning/sprint-goals.md",
@@ -453,14 +460,14 @@ test("runCli merge with --dry-run does not write files", async () => {
         throw new Error("markDigestItemMerged should not be called");
       },
       listTopicCandidates: async () => [],
-      generateTopicTargets: async () => [
-        {
-          action: "create_new",
-          shortDescription: "sprint-goals",
-          topic: "Sprint Goals",
-          tags: ["sprint"],
-        },
-      ],
+      rankTopicCandidates: (_item, candidates) => candidates,
+      collectCategoryTagPool: () => [],
+      generateTopicTarget: async () => ({
+        action: "create_new",
+        shortDescription: "sprint-goals",
+        topic: "Sprint Goals",
+        tags: ["sprint"],
+      }),
       prepareTopicMerge: async () => ({
         targetPath: "/tmp/apollo/topics/planning/sprint-goals.md",
         relativeTargetPath: "topics/planning/sprint-goals.md",

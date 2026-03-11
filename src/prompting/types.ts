@@ -3,6 +3,8 @@ import type {
   DigestInputImage,
   DigestItem,
   DigestSource,
+  MergeContentInput,
+  MergeContentResult,
   TopicRoutingCandidate,
   TopicRoutingTarget,
 } from "../digest";
@@ -13,7 +15,7 @@ import type {
 } from "../report";
 
 /** Supported prompt-processing operation keys. */
-export type ProcessingKind = "digest" | "merge" | "report";
+export type ProcessingKind = "digest" | "merge" | "merge_content" | "report";
 
 /** Runtime input required to build a `digest` prompt. */
 export type DigestOperationContext = {
@@ -28,6 +30,9 @@ export type MergeOperationContext = {
   candidates: TopicRoutingCandidate[];
 };
 
+/** Runtime input required to build a `merge_content` prompt. */
+export type MergeContentOperationContext = MergeContentInput;
+
 /** Runtime input required to build a `report` prompt. */
 export type ReportOperationContext = {
   period: ReportPeriod;
@@ -39,13 +44,15 @@ export type ReportOperationContext = {
 export type OperationContextMap = {
   digest: DigestOperationContext;
   merge: MergeOperationContext;
+  merge_content: MergeContentOperationContext;
   report: ReportOperationContext;
 };
 
 /** Maps operation kind to its parsed model output shape. */
 export type OperationOutputMap = {
   digest: DigestItem[];
-  merge: TopicRoutingTarget[];
+  merge: TopicRoutingTarget;
+  merge_content: MergeContentResult;
   report: {
     title: string;
     executiveSummary: string;

@@ -18,14 +18,17 @@ import { loadInputImages } from "./cli/image-loader";
 import {
   type DigestInputImage,
   generateDigestItems,
-  generateTopicTargets,
+  generateMergeContent,
+  generateTopicTarget,
 } from "./digest";
 import {
+  collectCategoryTagPool,
   listPendingDigestItems,
   listTopicCandidates,
   loadReportContext,
   markDigestItemMerged,
   prepareTopicMerge,
+  rankTopicCandidates,
   resolveBaseReportFiles,
   resolveReportInputFiles,
   writeDigestItems,
@@ -37,6 +40,7 @@ import { createBuiltInPromptRegistry } from "./prompting/registry";
 import type { PromptRegistry } from "./prompting/types";
 import { validatePromptRegistry } from "./prompting/validate";
 import { generateReport, renderReportMarkdown } from "./report";
+import { governTags } from "./services/topic-merge";
 
 export {
   parseDigestCommandArgs,
@@ -47,12 +51,15 @@ export {
 
 type CliDependencies = {
   generateDigestItems: typeof generateDigestItems;
-  generateTopicTargets: typeof generateTopicTargets;
+  generateTopicTarget: typeof generateTopicTarget;
+  generateMergeContent: typeof generateMergeContent;
   generateReport: typeof generateReport;
   writeDigestItems: typeof writeDigestItems;
   listPendingDigestItems: typeof listPendingDigestItems;
   markDigestItemMerged: typeof markDigestItemMerged;
   listTopicCandidates: typeof listTopicCandidates;
+  rankTopicCandidates: typeof rankTopicCandidates;
+  collectCategoryTagPool: typeof collectCategoryTagPool;
   prepareTopicMerge: typeof prepareTopicMerge;
   writePreparedTopicMerge: typeof writePreparedTopicMerge;
   resolveReportInputFiles: typeof resolveReportInputFiles;
@@ -222,9 +229,14 @@ async function runMergeCommand(
       category: digestNote.item.category,
       candidateCount: candidates.length,
     });
-    const targets = await deps.generateTopicTargets(
+    const rankedCandidates = deps.rankTopicCandidates(
       digestNote.item,
       candidates,
+      8,
+    );
+    const target = await deps.generateTopicTarget(
+      digestNote.item,
+      rankedCandidates,
       {
         model: parsed.model,
         logger,
@@ -232,28 +244,91 @@ async function runMergeCommand(
         dryRun: parsed.dryRun,
       },
     );
-    await logger.debug("merge.targets", "Generated topic routing targets", {
-      targetCount: targets.length,
+    await logger.debug("merge.target", "Generated topic routing target", {
+      targetAction: target.action,
+      targetSlug: target.slug ?? null,
     });
+    const tagPool = deps.collectCategoryTagPool(candidates);
+    const selectedCandidate =
+      target.action === "update_existing"
+        ? candidates.find((candidate) => candidate.slug === target.slug)
+        : null;
+    let itemForMerge = digestNote.item;
+    let targetForMerge = {
+      ...target,
+      tags: governTags({
+        existingTags: selectedCandidate?.tags ?? [],
+        incomingTags: target.tags,
+        tagPool,
+      }),
+    };
+
+    if (!parsed.dryRun) {
+      try {
+        const merged = await deps.generateMergeContent(
+          {
+            category: digestNote.item.category,
+            topic: target.topic,
+            tags: targetForMerge.tags,
+            existing: {
+              summary: selectedCandidate?.summary ?? "",
+              keyPoints: selectedCandidate?.keyPoints ?? [],
+              timeline: selectedCandidate?.timeline ?? [],
+              references: selectedCandidate?.references ?? [],
+            },
+            incoming: digestNote.item,
+            tagPool,
+          },
+          {
+            model: parsed.model,
+            logger,
+            promptRegistry,
+            dryRun: parsed.dryRun,
+          },
+        );
+
+        itemForMerge = {
+          ...digestNote.item,
+          summary: merged.summary,
+          keyPoints: merged.keyPoints,
+          timeline: merged.timeline,
+          references: merged.references,
+        };
+        targetForMerge = {
+          ...targetForMerge,
+          tags: governTags({
+            existingTags: selectedCandidate?.tags ?? [],
+            incomingTags: target.tags,
+            aiTags: merged.tags,
+            tagPool,
+          }),
+        };
+      } catch (error) {
+        await logger.debug(
+          "merge.semantic_fallback",
+          "Falling back to deterministic merge content",
+          {
+            reason: error instanceof Error ? error.message : "Unknown error",
+          },
+        );
+      }
+    }
     const mergedTopicPathsForStage: string[] = [];
 
-    for (const target of targets) {
-      const plan = await deps.prepareTopicMerge({
-        projectRoot,
-        category: digestNote.item.category,
-        item: digestNote.item,
-        target,
-        mergedDigestId: digestNote.relativePath,
-      });
+    const plan = await deps.prepareTopicMerge({
+      projectRoot,
+      category: digestNote.item.category,
+      item: itemForMerge,
+      target: targetForMerge,
+      mergedDigestId: digestNote.relativePath,
+    });
 
-      if (!plan.hasChanges) {
-        await logger.progress(
-          "merge.no_change",
-          `No topic change: ${plan.targetPath}`,
-        );
-        continue;
-      }
-
+    if (!plan.hasChanges) {
+      await logger.progress(
+        "merge.no_change",
+        `No topic change: ${plan.targetPath}`,
+      );
+    } else {
       const preview = renderDiffPreview(
         plan.currentContent,
         plan.proposedContent,
@@ -273,24 +348,23 @@ async function runMergeCommand(
           "merge.skipped",
           `Skipped merge: ${plan.targetPath}`,
         );
-        continue;
-      }
-
-      if (parsed.dryRun) {
-        await logger.progress(
-          "merge.dry_run.plan",
-          `Dry run: would merge into topic file: ${plan.targetPath}`,
-        );
       } else {
-        await deps.writePreparedTopicMerge(plan);
-      }
-      mergedFiles.push(plan.targetPath);
-      mergedTopicPathsForStage.push(plan.relativeTargetPath);
-      if (!parsed.dryRun) {
-        await logger.progress(
-          "merge.applied",
-          `Merged into topic file: ${plan.targetPath}`,
-        );
+        if (parsed.dryRun) {
+          await logger.progress(
+            "merge.dry_run.plan",
+            `Dry run: would merge into topic file: ${plan.targetPath}`,
+          );
+        } else {
+          await deps.writePreparedTopicMerge(plan);
+        }
+        mergedFiles.push(plan.targetPath);
+        mergedTopicPathsForStage.push(plan.relativeTargetPath);
+        if (!parsed.dryRun) {
+          await logger.progress(
+            "merge.applied",
+            `Merged into topic file: ${plan.targetPath}`,
+          );
+        }
       }
     }
 
@@ -416,12 +490,15 @@ export async function runCli(
 ): Promise<number> {
   const deps: CliDependencies = {
     generateDigestItems,
-    generateTopicTargets,
+    generateTopicTarget,
+    generateMergeContent,
     generateReport,
     writeDigestItems,
     listPendingDigestItems,
     markDigestItemMerged,
     listTopicCandidates,
+    rankTopicCandidates,
+    collectCategoryTagPool,
     prepareTopicMerge,
     writePreparedTopicMerge,
     resolveReportInputFiles,

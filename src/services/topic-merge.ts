@@ -24,6 +24,7 @@ export type BuiltTopicMerge = {
 };
 
 export const MAX_TOPIC_SLUG_LENGTH = 100;
+export const MAX_TOPIC_TAGS = 12;
 
 export function slugifyTopic(input: string): string {
   const normalized = input
@@ -46,6 +47,26 @@ export function normalizeTags(tags: string[]): string[] {
     .map((tag) => slugifyTopic(tag))
     .filter((tag) => tag.length > 0);
   return [...new Set(values)].sort();
+}
+
+export function governTags(options: {
+  existingTags: string[];
+  incomingTags: string[];
+  aiTags?: string[];
+  tagPool: string[];
+  maxTags?: number;
+}): string[] {
+  const maxTags = options.maxTags ?? MAX_TOPIC_TAGS;
+  const pool = new Set(normalizeTags(options.tagPool));
+  const existing = normalizeTags(options.existingTags);
+  const incoming = normalizeTags(options.incomingTags);
+  const aiTags = normalizeTags(options.aiTags ?? []);
+
+  const reused = aiTags.filter((tag) => pool.has(tag));
+  const newTags = aiTags.filter((tag) => !pool.has(tag));
+  const baseline = normalizeTags([...existing, ...incoming]);
+
+  return uniqueOrdered([...reused, ...baseline, ...newTags]).slice(0, maxTags);
 }
 
 function normalizeSources(sources: string[]): DigestSource[] {

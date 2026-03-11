@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 
 import {
   buildTopicMergeContent,
+  governTags,
   slugifyTopic,
 } from "../src/services/topic-merge";
 
@@ -188,4 +189,20 @@ test("buildTopicMergeContent emits references in deterministic order", () => {
   expect(githubRefIndex).toBeGreaterThan(-1);
   expect(slackRefIndex).toBeGreaterThan(-1);
   expect(githubRefIndex).toBeLessThan(slackRefIndex);
+});
+
+test("governTags reuses pool tags and limits additions", () => {
+  const tags = governTags({
+    existingTags: ["release-cadence"],
+    incomingTags: ["Release Planning"],
+    aiTags: ["release-cadence", "release-planning", "new-shiny-tag"],
+    tagPool: ["release-cadence", "release-planning"],
+    maxTags: 3,
+  });
+
+  expect(tags).toEqual([
+    "release-cadence",
+    "release-planning",
+    "new-shiny-tag",
+  ]);
 });
