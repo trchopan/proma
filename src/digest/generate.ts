@@ -4,6 +4,7 @@ import type {
   DigestGenerationInput,
   DigestGenerationOptions,
   DigestItem,
+  DigestSource,
   MergeContentInput,
   MergeContentOptions,
   MergeContentResult,
@@ -15,7 +16,9 @@ import { DIGEST_SOURCES } from "./types";
 
 export async function generateDigestItems(
   input: DigestGenerationInput,
-  options: DigestGenerationOptions,
+  options: DigestGenerationOptions & {
+    allowedSources?: readonly DigestSource[];
+  },
   chatCompletion?: (options: ChatCompletionOptions) => Promise<string>,
 ): Promise<DigestItem[]> {
   const inputText = typeof input === "string" ? input : input.text;
@@ -27,7 +30,7 @@ export async function generateDigestItems(
     {
       inputText,
       images,
-      allowedSources: DIGEST_SOURCES,
+      allowedSources: options.allowedSources ?? DIGEST_SOURCES,
     },
     {
       model: options.model,

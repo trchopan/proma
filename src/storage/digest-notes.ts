@@ -18,6 +18,7 @@ export type WriteDigestItemsOptions = {
   projectRoot: string;
   items: DigestItem[];
   now?: Date;
+  allowedSources?: readonly string[];
 };
 
 export type DigestNoteItem = {
@@ -145,15 +146,17 @@ function parseDigestCategory(input: string): DigestCategory | null {
     : null;
 }
 
-function parseDigestSource(input: string): DigestSource | null {
+function parseDigestSource(
+  input: string,
+  allowedSources: readonly string[],
+): DigestSource | null {
   const value = input.trim().toLowerCase();
-  return (DIGEST_SOURCES as readonly string[]).includes(value)
-    ? (value as DigestSource)
-    : null;
+  return allowedSources.includes(value) ? (value as DigestSource) : null;
 }
 
 function parseDigestNoteFrontMatter(
   markdown: string,
+  allowedSources: readonly string[],
 ): DigestNoteFrontMatter | null {
   const { frontMatter } = splitFrontMatter(markdown);
   const entries = parseScalarFrontMatterEntries(frontMatter);
@@ -169,7 +172,7 @@ function parseDigestNoteFrontMatter(
 
   const frontMatterSource = entries.get("source");
   const source = frontMatterSource
-    ? parseDigestSource(frontMatterSource)
+    ? parseDigestSource(frontMatterSource, allowedSources)
     : null;
 
   if (!source) {
@@ -228,14 +231,17 @@ function renderDigestNoteFile(
 function parseDigestNoteItem(
   markdown: string,
   fileName: string,
+  allowedSources: readonly string[],
 ): {
   item: DigestItem;
   merged: boolean;
   mergedTopicPaths: string[];
 } {
-  const frontMatter = parseDigestNoteFrontMatter(markdown);
+  const frontMatter = parseDigestNoteFrontMatter(markdown, allowedSources);
   const { body } = splitFrontMatter(markdown);
-  const canonical = extractCanonicalTopicData(body);
+  const canonical = extractCanonicalTopicData(body, {
+    allowedSources,
+  });
 
   if (!frontMatter) {
     throw new Error(`Unable to parse digest note metadata: ${fileName}`);
@@ -297,7 +303,12 @@ export async function writeDigestItems(
 
 export async function listPendingDigestItems(
   projectRoot: string,
+  options?: { allowedSources?: readonly string[] },
 ): Promise<DigestNoteItem[]> {
+  const allowedSources =
+    options?.allowedSources && options.allowedSources.length > 0
+      ? [...options.allowedSources]
+      : [...DIGEST_SOURCES];
   const notesDir = path.join(projectRoot, "notes");
   let files: string[] = [];
 
@@ -317,7 +328,7 @@ export async function listPendingDigestItems(
     const relativePath = path.join("notes", fileName);
     const absolutePath = path.join(projectRoot, relativePath);
     const markdown = await Bun.file(absolutePath).text();
-    const digestNote = parseDigestNoteItem(markdown, fileName);
+    const digestNote = parseDigestNoteItem(markdown, fileName, allowedSources);
 
     if (digestNote.merged) {
       continue;
@@ -336,10 +347,15 @@ export async function listPendingDigestItems(
 export async function markDigestItemMerged(
   absolutePath: string,
   mergedTopicPaths: string[],
+  options?: { allowedSources?: readonly string[] },
 ): Promise<void> {
+  const allowedSources =
+    options?.allowedSources && options.allowedSources.length > 0
+      ? [...options.allowedSources]
+      : [...DIGEST_SOURCES];
   const markdown = await Bun.file(absolutePath).text();
   const fileName = path.basename(absolutePath);
-  const digestNote = parseDigestNoteItem(markdown, fileName);
+  const digestNote = parseDigestNoteItem(markdown, fileName, allowedSources);
 
   if (digestNote.merged) {
     return;

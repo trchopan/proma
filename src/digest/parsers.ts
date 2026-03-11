@@ -10,7 +10,28 @@ import {
 } from "./types";
 
 const TIMELINE_ENTRY_PATTERN = /^\d{4}-\d{2}-\d{2}\s+-\s+.+$/;
-const ALLOWED_SOURCES_TEXT = DIGEST_SOURCES.join(", ");
+
+type ParseOptions = {
+  allowedSources?: readonly string[];
+};
+
+function normalizeAllowedSources(options?: ParseOptions): {
+  allowedSourceSet: Set<string>;
+  allowedSourcesText: string;
+} {
+  const allowedSources = [
+    ...new Set(
+      (options?.allowedSources ?? DIGEST_SOURCES)
+        .map((value) => value.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ].sort();
+
+  return {
+    allowedSourceSet: new Set(allowedSources),
+    allowedSourcesText: allowedSources.join(", "),
+  };
+}
 
 function normalizeCategory(input: unknown): DigestCategory | null {
   if (typeof input !== "string") {
@@ -26,19 +47,17 @@ function normalizeCategory(input: unknown): DigestCategory | null {
   return null;
 }
 
-function normalizeSource(input: unknown): DigestSource | null {
+function normalizeSource(
+  input: unknown,
+  allowedSourceSet: Set<string>,
+): DigestSource | null {
   if (typeof input !== "string") {
     return null;
   }
 
   const value = input.trim().toLowerCase();
 
-  if (
-    value === "slack" ||
-    value === "wiki" ||
-    value === "git" ||
-    value === "document"
-  ) {
+  if (allowedSourceSet.has(value)) {
     return value;
   }
 
@@ -80,7 +99,10 @@ function normalizeTimeline(input: unknown): string[] {
   return [...new Set(timeline)].sort((a, b) => a.localeCompare(b));
 }
 
-function normalizeReferences(input: unknown): DigestReference[] {
+function normalizeReferences(
+  input: unknown,
+  options: { allowedSourceSet: Set<string>; allowedSourcesText: string },
+): DigestReference[] {
   if (!Array.isArray(input)) {
     return [];
   }
@@ -94,12 +116,15 @@ function normalizeReferences(input: unknown): DigestReference[] {
       );
     }
 
-    const source = normalizeSource((item as { source?: unknown }).source);
+    const source = normalizeSource(
+      (item as { source?: unknown }).source,
+      options.allowedSourceSet,
+    );
     const link = (item as { link?: unknown }).link;
 
     if (!source) {
       throw new Error(
-        `Digest item contained invalid reference source (expected one of: ${ALLOWED_SOURCES_TEXT})`,
+        `Digest item contained invalid reference source (expected one of: ${options.allowedSourcesText})`,
       );
     }
 
@@ -127,7 +152,11 @@ function parseArrayPayload(payload: unknown): unknown[] {
   throw new Error("Digest response must be a JSON object with an items array");
 }
 
-export function parseDigestItemsResponse(content: string): DigestItem[] {
+export function parseDigestItemsResponse(
+  content: string,
+  options?: ParseOptions,
+): DigestItem[] {
+  const normalizedOptions = normalizeAllowedSources(options);
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
@@ -146,7 +175,10 @@ export function parseDigestItemsResponse(content: string): DigestItem[] {
     const category = normalizeCategory(
       (item as { category?: unknown }).category,
     );
-    const source = normalizeSource((item as { source?: unknown }).source);
+    const source = normalizeSource(
+      (item as { source?: unknown }).source,
+      normalizedOptions.allowedSourceSet,
+    );
     const summary = (item as { summary?: unknown }).summary;
 
     if (!category) {
@@ -155,7 +187,7 @@ export function parseDigestItemsResponse(content: string): DigestItem[] {
 
     if (!source) {
       throw new Error(
-        `Digest item contained invalid source (expected one of: ${ALLOWED_SOURCES_TEXT})`,
+        `Digest item contained invalid source (expected one of: ${normalizedOptions.allowedSourcesText})`,
       );
     }
 
@@ -173,6 +205,7 @@ export function parseDigestItemsResponse(content: string): DigestItem[] {
       timeline: normalizeTimeline((item as { timeline?: unknown }).timeline),
       references: normalizeReferences(
         (item as { references?: unknown }).references,
+        normalizedOptions,
       ),
     });
   }
@@ -266,7 +299,11 @@ export function parseTopicRoutingResponse(
   };
 }
 
-export function parseMergeContentResponse(content: string): MergeContentResult {
+export function parseMergeContentResponse(
+  content: string,
+  options?: ParseOptions,
+): MergeContentResult {
+  const normalizedOptions = normalizeAllowedSources(options);
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
@@ -291,6 +328,7 @@ export function parseMergeContentResponse(content: string): MergeContentResult {
     timeline: normalizeTimeline((parsed as { timeline?: unknown }).timeline),
     references: normalizeReferences(
       (parsed as { references?: unknown }).references,
+      normalizedOptions,
     ),
     tags: normalizeStringArray((parsed as { tags?: unknown }).tags),
   };

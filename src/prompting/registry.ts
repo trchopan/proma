@@ -4,10 +4,11 @@ import {
   parseTopicRoutingResponse,
 } from "../digest/parsers";
 import {
-  DIGEST_RESPONSE_SCHEMA,
-  MERGE_CONTENT_RESPONSE_SCHEMA,
+  buildDigestResponseSchema,
+  buildMergeContentResponseSchema,
   TOPIC_ROUTING_RESPONSE_SCHEMA,
 } from "../digest/schemas";
+import { DIGEST_SOURCES } from "../digest/types";
 import { parseReportResponse, REPORT_RESPONSE_SCHEMA } from "../report";
 import type { PromptRegistry } from "./types";
 
@@ -68,7 +69,16 @@ function buildMergeCandidateText(context: {
     .join("\n");
 }
 
-export function createBuiltInPromptRegistry(): PromptRegistry {
+export function createBuiltInPromptRegistry(options?: {
+  allowedSources?: readonly string[];
+}): PromptRegistry {
+  const allowedSources =
+    options?.allowedSources && options.allowedSources.length > 0
+      ? [...options.allowedSources]
+      : [...DIGEST_SOURCES];
+  const digestSchema = buildDigestResponseSchema(allowedSources);
+  const mergeContentSchema = buildMergeContentResponseSchema(allowedSources);
+
   return {
     digest: {
       kind: "digest",
@@ -108,12 +118,15 @@ export function createBuiltInPromptRegistry(): PromptRegistry {
             json_schema: {
               name: "digest_items",
               strict: true,
-              schema: DIGEST_RESPONSE_SCHEMA,
+              schema: digestSchema,
             },
           },
         };
       },
-      parseResponse: (raw) => parseDigestItemsResponse(raw),
+      parseResponse: (raw) =>
+        parseDigestItemsResponse(raw, {
+          allowedSources,
+        }),
     },
     merge: {
       kind: "merge",
@@ -205,12 +218,15 @@ export function createBuiltInPromptRegistry(): PromptRegistry {
             json_schema: {
               name: "topic_merge_content",
               strict: true,
-              schema: MERGE_CONTENT_RESPONSE_SCHEMA,
+              schema: mergeContentSchema,
             },
           },
         };
       },
-      parseResponse: (raw) => parseMergeContentResponse(raw),
+      parseResponse: (raw) =>
+        parseMergeContentResponse(raw, {
+          allowedSources,
+        }),
     },
     report: {
       kind: "report",

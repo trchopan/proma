@@ -164,7 +164,24 @@ Generated markdown sections:
 - `## Timeline` (always present; use `- None` when no date context is available)
 - Timeline entries, when present, must use strict `YYYY-MM-DD - <context>` format
 - `## References` entries in `- <source>: <link>` format (example: `- slack: https://...`)
-- Allowed digest/reference sources: `slack`, `wiki`, `git`, `document` (use `document` for Figma and document links)
+- Allowed digest/reference sources default to: `slack`, `wiki`, `git`, `document`
+
+Project config override:
+
+- You can extend digest/reference sources with a project config module in your project root.
+- File resolution precedence: `proma.config.ts` > `proma.config.mjs` > `proma.config.js`.
+- Config export must be a default object with `digest.allowedSources`.
+
+```ts
+// proma.config.ts
+export default {
+  digest: {
+    allowedSources: ["jira", "notion"],
+  },
+};
+```
+
+- Effective allowed sources are `defaults + custom` (union, lowercase, deduped).
 
 ## Logging
 

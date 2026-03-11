@@ -5,6 +5,7 @@ import type {
   DigestCategory,
   DigestItem,
   DigestReference,
+  DigestSource,
   TopicRoutingTarget,
 } from "../digest/types";
 import {
@@ -127,6 +128,7 @@ export type PrepareTopicMergeOptions = {
   target: TopicRoutingTarget;
   mergedDigestId: string;
   now?: Date;
+  allowedSources?: readonly DigestSource[];
 };
 
 export type PreparedTopicMerge = {
@@ -143,7 +145,12 @@ export { slugifyTopic };
 export async function listTopicCandidates(
   projectRoot: string,
   category: DigestCategory,
+  allowedSources?: readonly DigestSource[],
 ): Promise<TopicCandidate[]> {
+  const activeSources =
+    allowedSources && allowedSources.length > 0
+      ? [...allowedSources]
+      : undefined;
   const categoryDir = path.join(projectRoot, "topics", category);
   let files: string[] = [];
 
@@ -162,7 +169,9 @@ export async function listTopicCandidates(
     const absolutePath = path.join(categoryDir, fileName);
     const markdown = await Bun.file(absolutePath).text();
     const parsed = parseFrontMatter(markdown);
-    const canonical = extractCanonicalTopicData(parsed.body);
+    const canonical = extractCanonicalTopicData(parsed.body, {
+      allowedSources: activeSources,
+    });
     const slug = fileName.slice(0, -3);
     const topic = extractTopicTitle(parsed.body) || slug;
     const tags = normalizeTags(parsed.metadata.tags ?? []);
@@ -218,6 +227,7 @@ export async function prepareTopicMerge(
     target: options.target,
     mergedDigestId: options.mergedDigestId,
     now: options.now,
+    allowedSources: options.allowedSources,
   });
 
   return {

@@ -37,20 +37,26 @@ export function uniqueOrdered(values: string[]): string[] {
   return ordered;
 }
 
-export function parseReferenceKey(value: string): CanonicalReference | null {
+function parseReferenceKeyWithAllowedSources(
+  value: string,
+  allowedSources: readonly string[],
+): CanonicalReference | null {
   const match = value.match(/^([a-z]+):\s*(.+)$/i);
   if (!match?.[1] || !match[2]) {
     return null;
   }
 
-  const parsedSource = match[1].trim().toLowerCase();
-  const source = parsedSource;
+  const source = match[1].trim().toLowerCase();
   const link = match[2].trim();
-  if (!(DIGEST_SOURCES as readonly string[]).includes(source) || !link) {
+  if (!allowedSources.includes(source) || !link) {
     return null;
   }
 
   return { source: source as DigestSource, link };
+}
+
+export function parseReferenceKey(value: string): CanonicalReference | null {
+  return parseReferenceKeyWithAllowedSources(value, DIGEST_SOURCES);
 }
 
 export function parseTimelineEntry(value: string): string | null {
@@ -62,7 +68,14 @@ export function parseTimelineEntry(value: string): string | null {
   return normalized;
 }
 
-export function extractCanonicalTopicData(body: string): CanonicalTopicData {
+export function extractCanonicalTopicData(
+  body: string,
+  options?: { allowedSources?: readonly string[] },
+): CanonicalTopicData {
+  const allowedSources =
+    options?.allowedSources && options.allowedSources.length > 0
+      ? [...options.allowedSources]
+      : [...DIGEST_SOURCES];
   const lines = body.split("\n");
   let section: "summary" | "keyPoints" | "timeline" | "references" | null =
     null;
@@ -123,7 +136,10 @@ export function extractCanonicalTopicData(body: string): CanonicalTopicData {
       if (!bullet?.[1] || bullet[1] === "None") {
         continue;
       }
-      const parsed = parseReferenceKey(bullet[1]);
+      const parsed = parseReferenceKeyWithAllowedSources(
+        bullet[1],
+        allowedSources,
+      );
       if (parsed) {
         references.push(parsed);
       }
@@ -133,7 +149,7 @@ export function extractCanonicalTopicData(body: string): CanonicalTopicData {
   const uniqueRefs = uniqueOrdered(
     references.map((reference) => `${reference.source}: ${reference.link}`),
   )
-    .map(parseReferenceKey)
+    .map((value) => parseReferenceKeyWithAllowedSources(value, allowedSources))
     .filter((value): value is CanonicalReference => Boolean(value));
 
   return {
