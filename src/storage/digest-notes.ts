@@ -15,19 +15,19 @@ import {
   splitFrontMatter,
 } from "../markdown/frontmatter";
 
-export type WriteStageOneDigestItemsOptions = {
+export type WriteDigestItemsOptions = {
   projectRoot: string;
   items: DigestItem[];
   now?: Date;
 };
 
-export type StagedDigestItem = {
+export type DigestNoteItem = {
   item: DigestItem;
   absolutePath: string;
   relativePath: string;
 };
 
-type StageOneFrontMatter = {
+type DigestNoteFrontMatter = {
   category: DigestCategory;
   source: DigestSource;
   merged: boolean;
@@ -131,7 +131,7 @@ export async function allocateNextIndex(
   return maxIndex + 1;
 }
 
-function buildStageOneRelativePath(
+function buildDigestNoteRelativePath(
   category: DigestCategory,
   datePrefix: string,
   index: number,
@@ -158,9 +158,9 @@ function parseDigestSource(input: string): DigestSource | null {
     : null;
 }
 
-function parseStageOneFrontMatter(
+function parseDigestNoteFrontMatter(
   markdown: string,
-): StageOneFrontMatter | null {
+): DigestNoteFrontMatter | null {
   const { frontMatter } = splitFrontMatter(markdown);
   const entries = parseScalarFrontMatterEntries(frontMatter);
 
@@ -205,7 +205,7 @@ function parseStageOneFrontMatter(
   };
 }
 
-function renderStageOneFrontMatter(metadata: StageOneFrontMatter): string {
+function renderDigestNoteFrontMatter(metadata: DigestNoteFrontMatter): string {
   return [
     "---",
     `category: ${metadata.category}`,
@@ -218,12 +218,12 @@ function renderStageOneFrontMatter(metadata: StageOneFrontMatter): string {
   ].join("\n");
 }
 
-function renderStageOneDigestFile(
+function renderDigestNoteFile(
   item: DigestItem,
   merged: boolean,
   mergedTopicPaths: string[],
 ): string {
-  return `${renderStageOneFrontMatter({
+  return `${renderDigestNoteFrontMatter({
     category: item.category,
     source: item.source,
     merged,
@@ -231,7 +231,7 @@ function renderStageOneDigestFile(
   })}${renderDigestMarkdown(item)}`;
 }
 
-function parseStageOneDigestItem(
+function parseDigestNoteItem(
   markdown: string,
   fileName: string,
 ): {
@@ -239,16 +239,16 @@ function parseStageOneDigestItem(
   merged: boolean;
   mergedTopicPaths: string[];
 } {
-  const frontMatter = parseStageOneFrontMatter(markdown);
+  const frontMatter = parseDigestNoteFrontMatter(markdown);
   const { body } = splitFrontMatter(markdown);
   const canonical = extractCanonicalTopicData(body);
 
   if (!frontMatter) {
-    throw new Error(`Unable to parse staged note metadata: ${fileName}`);
+    throw new Error(`Unable to parse digest note metadata: ${fileName}`);
   }
 
   if (!canonical.summary) {
-    throw new Error(`Unable to parse staged note summary: ${fileName}`);
+    throw new Error(`Unable to parse digest note summary: ${fileName}`);
   }
 
   return {
@@ -265,13 +265,13 @@ function parseStageOneDigestItem(
   };
 }
 
-export async function writeStageOneDigestItems(
-  options: WriteStageOneDigestItemsOptions,
-): Promise<StagedDigestItem[]> {
+export async function writeDigestItems(
+  options: WriteDigestItemsOptions,
+): Promise<DigestNoteItem[]> {
   const notesDir = path.join(options.projectRoot, "notes");
   const datePrefix = toDateString(options.now ?? new Date());
   const nextByCategory = new Map<DigestCategory, number>();
-  const stagedItems: StagedDigestItem[] = [];
+  const digestItems: DigestNoteItem[] = [];
 
   await mkdir(notesDir, { recursive: true });
 
@@ -280,17 +280,17 @@ export async function writeStageOneDigestItems(
     const currentNext = nextByCategory.get(item.category);
     const index = currentNext ?? (await allocateNextIndex(notesDir, keyPrefix));
 
-    const relativePath = buildStageOneRelativePath(
+    const relativePath = buildDigestNoteRelativePath(
       item.category,
       datePrefix,
       index,
     );
     const absolutePath = path.join(options.projectRoot, relativePath);
-    const markdown = renderStageOneDigestFile(item, false, []);
+    const markdown = renderDigestNoteFile(item, false, []);
 
     await Bun.write(absolutePath, markdown);
 
-    stagedItems.push({
+    digestItems.push({
       item,
       absolutePath,
       relativePath,
@@ -298,12 +298,12 @@ export async function writeStageOneDigestItems(
     nextByCategory.set(item.category, index + 1);
   }
 
-  return stagedItems;
+  return digestItems;
 }
 
-export async function listPendingStageOneDigestItems(
+export async function listPendingDigestItems(
   projectRoot: string,
-): Promise<StagedDigestItem[]> {
+): Promise<DigestNoteItem[]> {
   const notesDir = path.join(projectRoot, "notes");
   let files: string[] = [];
 
@@ -313,7 +313,7 @@ export async function listPendingStageOneDigestItems(
     return [];
   }
 
-  const pending: StagedDigestItem[] = [];
+  const pending: DigestNoteItem[] = [];
 
   for (const fileName of files.sort()) {
     if (!fileName.endsWith(".md")) {
@@ -323,14 +323,14 @@ export async function listPendingStageOneDigestItems(
     const relativePath = path.join("notes", fileName);
     const absolutePath = path.join(projectRoot, relativePath);
     const markdown = await Bun.file(absolutePath).text();
-    const staged = parseStageOneDigestItem(markdown, fileName);
+    const digestNote = parseDigestNoteItem(markdown, fileName);
 
-    if (staged.merged) {
+    if (digestNote.merged) {
       continue;
     }
 
     pending.push({
-      item: staged.item,
+      item: digestNote.item,
       absolutePath,
       relativePath,
     });
@@ -339,22 +339,22 @@ export async function listPendingStageOneDigestItems(
   return pending;
 }
 
-export async function markStageOneDigestItemMerged(
+export async function markDigestItemMerged(
   absolutePath: string,
   mergedTopicPaths: string[],
 ): Promise<void> {
   const markdown = await Bun.file(absolutePath).text();
   const fileName = path.basename(absolutePath);
-  const staged = parseStageOneDigestItem(markdown, fileName);
+  const digestNote = parseDigestNoteItem(markdown, fileName);
 
-  if (staged.merged) {
+  if (digestNote.merged) {
     return;
   }
 
   await Bun.write(
     absolutePath,
-    renderStageOneDigestFile(staged.item, true, [
-      ...staged.mergedTopicPaths,
+    renderDigestNoteFile(digestNote.item, true, [
+      ...digestNote.mergedTopicPaths,
       ...mergedTopicPaths,
     ]),
   );

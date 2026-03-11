@@ -293,18 +293,18 @@ test("runCli digest writes stage 1 files only", async () => {
     {
       readTextFile: async () => "raw text",
       generateDigestItems: async () => mockItems,
-      writeStageOneDigestItems: async () => [
+      writeDigestItems: async () => [
         {
           item: mockItems[0] as DigestItem,
           absolutePath: "/tmp/apollo/notes/planning_2026-03-09_1.md",
           relativePath: "notes/planning_2026-03-09_1.md",
         },
       ],
-      listPendingStageOneDigestItems: async () => {
-        throw new Error("listPendingStageOneDigestItems should not be called");
+      listPendingDigestItems: async () => {
+        throw new Error("listPendingDigestItems should not be called");
       },
-      markStageOneDigestItemMerged: async () => {
-        throw new Error("markStageOneDigestItemMerged should not be called");
+      markDigestItemMerged: async () => {
+        throw new Error("markDigestItemMerged should not be called");
       },
     },
     {
@@ -339,8 +339,8 @@ test("runCli digest with --dry-run does not write stage 1 files", async () => {
     {
       readTextFile: async () => "raw text",
       generateDigestItems: async () => mockItems,
-      writeStageOneDigestItems: async () => {
-        throw new Error("writeStageOneDigestItems should not be called");
+      writeDigestItems: async () => {
+        throw new Error("writeDigestItems should not be called");
       },
     },
     {
@@ -357,7 +357,7 @@ test("runCli digest with --dry-run does not write stage 1 files", async () => {
   expect(output).toContain("Dry run complete. Would write 1 digest file(s).");
 });
 
-test("runCli merge processes pending staged notes", async () => {
+test("runCli merge processes pending digest notes", async () => {
   const output: string[] = [];
   const mockItems: DigestItem[] = [
     {
@@ -375,14 +375,14 @@ test("runCli merge processes pending staged notes", async () => {
   const exitCode = await runCli(
     ["merge", "--project", "apollo"],
     {
-      listPendingStageOneDigestItems: async () => [
+      listPendingDigestItems: async () => [
         {
           item: mockItems[0] as DigestItem,
           absolutePath: "/tmp/apollo/notes/planning_2026-03-09_1.md",
           relativePath: "notes/planning_2026-03-09_1.md",
         },
       ],
-      markStageOneDigestItemMerged: async (absolutePath) => {
+      markDigestItemMerged: async (absolutePath) => {
         mergedStageNotes.push(absolutePath);
       },
       listTopicCandidates: async () => [],
@@ -422,7 +422,7 @@ test("runCli merge processes pending staged notes", async () => {
     "No topic change: /tmp/apollo/topics/planning/sprint-goals.md",
   );
   expect(output).toContain("Confirmed 0 topic merge(s).");
-  expect(output).toContain("Marked 1 staged note(s) as merged.");
+  expect(output).toContain("Marked 1 digest note(s) as merged.");
   expect(mergedStageNotes).toEqual([
     "/tmp/apollo/notes/planning_2026-03-09_1.md",
   ]);
@@ -442,15 +442,15 @@ test("runCli merge with --dry-run does not write files", async () => {
   const exitCode = await runCli(
     ["merge", "--project", "apollo", "--dry-run"],
     {
-      listPendingStageOneDigestItems: async () => [
+      listPendingDigestItems: async () => [
         {
           item: mockItem,
           absolutePath: "/tmp/apollo/notes/planning_2026-03-09_1.md",
           relativePath: "notes/planning_2026-03-09_1.md",
         },
       ],
-      markStageOneDigestItemMerged: async () => {
-        throw new Error("markStageOneDigestItemMerged should not be called");
+      markDigestItemMerged: async () => {
+        throw new Error("markDigestItemMerged should not be called");
       },
       listTopicCandidates: async () => [],
       generateTopicTargets: async () => [
@@ -491,9 +491,9 @@ test("runCli merge with --dry-run does not write files", async () => {
     "Dry run: would merge into topic file: /tmp/apollo/topics/planning/sprint-goals.md",
   );
   expect(output).toContain(
-    "Dry run: would mark staged note as merged: /tmp/apollo/notes/planning_2026-03-09_1.md",
+    "Dry run: would mark digest note as merged: /tmp/apollo/notes/planning_2026-03-09_1.md",
   );
-  expect(output).toContain("Would mark 1 staged note(s) as merged.");
+  expect(output).toContain("Would mark 1 digest note(s) as merged.");
 });
 
 test("runCli report generates report and prints output path", async () => {
@@ -681,7 +681,7 @@ test("runCli digest loads markdown images and skips invalid ones with warnings",
         capturedInput = input;
         return mockItems;
       },
-      writeStageOneDigestItems: async () => [],
+      writeDigestItems: async () => [],
     },
     {
       out: (message) => {

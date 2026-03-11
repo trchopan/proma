@@ -21,16 +21,16 @@ import {
   generateTopicTargets,
 } from "./digest";
 import {
-  listPendingStageOneDigestItems,
+  listPendingDigestItems,
   listTopicCandidates,
   loadReportContext,
-  markStageOneDigestItemMerged,
+  markDigestItemMerged,
   prepareTopicMerge,
   resolveBaseReportFiles,
   resolveReportInputFiles,
+  writeDigestItems,
   writePreparedTopicMerge,
   writeReportFile,
-  writeStageOneDigestItems,
 } from "./files";
 import { createLogger, type Logger } from "./logging";
 import { createBuiltInPromptRegistry } from "./prompting/registry";
@@ -49,9 +49,9 @@ type CliDependencies = {
   generateDigestItems: typeof generateDigestItems;
   generateTopicTargets: typeof generateTopicTargets;
   generateReport: typeof generateReport;
-  writeStageOneDigestItems: typeof writeStageOneDigestItems;
-  listPendingStageOneDigestItems: typeof listPendingStageOneDigestItems;
-  markStageOneDigestItemMerged: typeof markStageOneDigestItemMerged;
+  writeDigestItems: typeof writeDigestItems;
+  listPendingDigestItems: typeof listPendingDigestItems;
+  markDigestItemMerged: typeof markDigestItemMerged;
   listTopicCandidates: typeof listTopicCandidates;
   prepareTopicMerge: typeof prepareTopicMerge;
   writePreparedTopicMerge: typeof writePreparedTopicMerge;
@@ -168,19 +168,19 @@ async function runDigestCommand(
     return 0;
   }
 
-  await logger.progress("digest.write_stage_one", "Writing digest notes...");
-  const stagedItems = await deps.writeStageOneDigestItems({
+  await logger.progress("digest.write_notes", "Writing digest notes...");
+  const digestNotes = await deps.writeDigestItems({
     projectRoot,
     items,
   });
 
   await logger.progress(
     "digest.write_complete",
-    `Wrote ${stagedItems.length} digest file(s):`,
+    `Wrote ${digestNotes.length} digest file(s):`,
   );
-  for (const stagedItem of stagedItems) {
-    await logger.info("digest.stage_file", `- ${stagedItem.absolutePath}`, {
-      path: stagedItem.absolutePath,
+  for (const digestNote of digestNotes) {
+    await logger.info("digest.note_file", `- ${digestNote.absolutePath}`, {
+      path: digestNote.absolutePath,
     });
   }
 
@@ -196,34 +196,34 @@ async function runMergeCommand(
   const projectRoot = path.resolve(parsed.project);
   await logger.progress(
     "merge.list_pending",
-    "Scanning pending staged notes...",
+    "Scanning pending digest notes...",
   );
-  const stagedItems = await deps.listPendingStageOneDigestItems(projectRoot);
+  const digestNotes = await deps.listPendingDigestItems(projectRoot);
   await logger.progress(
     "merge.pending_count",
-    `Found ${stagedItems.length} pending digest file(s).`,
+    `Found ${digestNotes.length} pending digest file(s).`,
   );
 
   const mergedFiles: string[] = [];
   const skippedFiles: string[] = [];
   let completedStagedItems = 0;
 
-  for (const stagedItem of stagedItems) {
-    await logger.debug("merge.process_item", "Processing staged note", {
-      stagedPath: stagedItem.absolutePath,
-      category: stagedItem.item.category,
+  for (const digestNote of digestNotes) {
+    await logger.debug("merge.process_item", "Processing digest note", {
+      digestPath: digestNote.absolutePath,
+      category: digestNote.item.category,
     });
     let hasSkippedMerge = false;
     const candidates = await deps.listTopicCandidates(
       projectRoot,
-      stagedItem.item.category,
+      digestNote.item.category,
     );
     await logger.debug("merge.candidates", "Loaded topic candidates", {
-      category: stagedItem.item.category,
+      category: digestNote.item.category,
       candidateCount: candidates.length,
     });
     const targets = await deps.generateTopicTargets(
-      stagedItem.item,
+      digestNote.item,
       candidates,
       {
         model: parsed.model,
@@ -240,10 +240,10 @@ async function runMergeCommand(
     for (const target of targets) {
       const plan = await deps.prepareTopicMerge({
         projectRoot,
-        category: stagedItem.item.category,
-        item: stagedItem.item,
+        category: digestNote.item.category,
+        item: digestNote.item,
         target,
-        mergedDigestId: stagedItem.relativePath,
+        mergedDigestId: digestNote.relativePath,
       });
 
       if (!plan.hasChanges) {
@@ -302,17 +302,17 @@ async function runMergeCommand(
       completedStagedItems += 1;
       await logger.progress(
         "merge.dry_run.stage",
-        `Dry run: would mark staged note as merged: ${stagedItem.absolutePath}`,
+        `Dry run: would mark digest note as merged: ${digestNote.absolutePath}`,
       );
     } else {
-      await deps.markStageOneDigestItemMerged(
-        stagedItem.absolutePath,
+      await deps.markDigestItemMerged(
+        digestNote.absolutePath,
         mergedTopicPathsForStage,
       );
       completedStagedItems += 1;
       await logger.progress(
-        "merge.marked_staged",
-        `Marked staged note as merged: ${stagedItem.absolutePath}`,
+        "merge.marked_digest_note",
+        `Marked digest note as merged: ${digestNote.absolutePath}`,
       );
     }
   }
@@ -329,7 +329,7 @@ async function runMergeCommand(
   }
   await logger.progress(
     "merge.summary.marked",
-    `${parsed.dryRun ? "Would mark" : "Marked"} ${completedStagedItems} staged note(s) as merged.`,
+    `${parsed.dryRun ? "Would mark" : "Marked"} ${completedStagedItems} digest note(s) as merged.`,
   );
 
   return 0;
@@ -418,9 +418,9 @@ export async function runCli(
     generateDigestItems,
     generateTopicTargets,
     generateReport,
-    writeStageOneDigestItems,
-    listPendingStageOneDigestItems,
-    markStageOneDigestItemMerged,
+    writeDigestItems,
+    listPendingDigestItems,
+    markDigestItemMerged,
     listTopicCandidates,
     prepareTopicMerge,
     writePreparedTopicMerge,
