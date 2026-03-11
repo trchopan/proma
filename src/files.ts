@@ -1,17 +1,17 @@
 export {
+  allocateNextIndex,
+  type DigestNoteItem,
+  listPendingDigestItems,
+  markDigestItemMerged,
+  type WriteDigestItemsOptions,
+  writeDigestItems,
+} from "./storage/digest-notes";
+export {
   loadReportContext,
   resolveBaseReportFiles,
   resolveReportInputFiles,
   writeReportFile,
 } from "./storage/report-files";
-export {
-  allocateNextIndex,
-  listPendingStageOneDigestItems,
-  markStageOneDigestItemMerged,
-  type StagedDigestItem,
-  type WriteStageOneDigestItemsOptions,
-  writeStageOneDigestItems,
-} from "./storage/stage-notes";
 export {
   listTopicCandidates,
   type PreparedTopicMerge,

@@ -77,8 +77,8 @@ bun run ./bin/proma.ts
 
 Proma runs in three commands:
 
-- `digest`: parse raw notes and write stage-1 digest notes.
-- `merge`: process pending stage-1 notes into canonical topic files.
+- `digest`: parse raw notes and write digest notes.
+- `merge`: process pending digest notes into canonical topic files.
 - `report`: generate a period report from topic files (and optional base reports).
 
 Digest summaries and key points are always generated in English, even when input notes are in another language.
@@ -127,7 +127,7 @@ Note: the digest flow uses OpenAI Structured Outputs (`json_schema`) and fails f
 
 `--project` is the root output directory.
 
-- Stage 1 raw digests: `<project>/notes/<category>_<YYYY-MM-DD>_<index>.md`
+- Raw digest notes: `<project>/notes/<category>_<YYYY-MM-DD>_<index>.md`
 - Topic files from `merge`: `<project>/topics/<category>/<topic-slug>.md`
 - Reports: `<project>/reports/<YYYY-MM-DD>_<period>.md` (collision fallback: `_2`, `_3`, ...)
 
@@ -138,15 +138,15 @@ Report behavior:
 - Repeat `--base` to provide specific previous reports; when omitted, the CLI loads markdown files under `<project>/reports`.
 - Report files include YAML front matter with `period`, `generated_at`, `model`, `input_files`, and `base_reports`.
 
-Stage-1 note behavior:
+Digest note behavior:
 
-- Stage-1 files include YAML front matter with `category`, `source`, `merged`, and `merged_topic_paths`.
+- Digest note files include YAML front matter with `category`, `source`, `merged`, and `merged_topic_paths`.
 - `merge` only picks files where `merged` is not `true`.
 
 Topic file behavior:
 
 - Topic files include YAML front matter metadata (`category`, `created_at`, `updated_at`, `tags`, `sources`, `digested_note_paths`).
-- `digested_note_paths` stores merged stage-note IDs (project-relative note paths such as `notes/planning_2026-03-09_1.md`).
+- `digested_note_paths` stores merged digest-note IDs (project-relative note paths such as `notes/planning_2026-03-09_1.md`).
 - The topic name is stored in the markdown level-1 title (`# ...`) at the top of the file body.
 - Tag metadata is normalized to lowercase kebab-case, deduplicated, and sorted.
 - New topic slugs are normalized to kebab-case and capped at 100 characters.

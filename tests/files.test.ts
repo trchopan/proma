@@ -6,17 +6,17 @@ import path from "node:path";
 import type { DigestItem, TopicRoutingTarget } from "../src/digest";
 import {
   allocateNextIndex,
-  listPendingStageOneDigestItems,
+  listPendingDigestItems,
   listTopicCandidates,
   loadReportContext,
-  markStageOneDigestItemMerged,
+  markDigestItemMerged,
   prepareTopicMerge,
   resolveBaseReportFiles,
   resolveReportInputFiles,
   slugifyTopic,
+  writeDigestItems,
   writePreparedTopicMerge,
   writeReportFile,
-  writeStageOneDigestItems,
 } from "../src/files";
 
 async function withTempDir(run: (dir: string) => Promise<void>): Promise<void> {
@@ -44,7 +44,7 @@ test("allocateNextIndex increments from existing prefixed files", async () => {
   });
 });
 
-test("writeStageOneDigestItems writes to notes directory", async () => {
+test("writeDigestItems writes to notes directory", async () => {
   await withTempDir(async (dir) => {
     const items: DigestItem[] = [
       {
@@ -65,7 +65,7 @@ test("writeStageOneDigestItems writes to notes directory", async () => {
       },
     ];
 
-    const written = await writeStageOneDigestItems({
+    const written = await writeDigestItems({
       projectRoot: dir,
       items,
       now: new Date("2026-03-09T10:00:00Z"),
@@ -85,7 +85,7 @@ test("writeStageOneDigestItems writes to notes directory", async () => {
   });
 });
 
-test("listPendingStageOneDigestItems returns only unmerged staged notes", async () => {
+test("listPendingDigestItems returns only unmerged digest notes", async () => {
   await withTempDir(async (dir) => {
     const items: DigestItem[] = [
       {
@@ -106,13 +106,13 @@ test("listPendingStageOneDigestItems returns only unmerged staged notes", async 
       },
     ];
 
-    const written = await writeStageOneDigestItems({
+    const written = await writeDigestItems({
       projectRoot: dir,
       items,
       now: new Date("2026-03-09T10:00:00Z"),
     });
 
-    await markStageOneDigestItemMerged(written[0]?.absolutePath ?? "", [
+    await markDigestItemMerged(written[0]?.absolutePath ?? "", [
       "topics/planning/sprint-goals.md",
     ]);
 
@@ -120,7 +120,7 @@ test("listPendingStageOneDigestItems returns only unmerged staged notes", async 
     expect(mergedContent).toContain("merged_topic_paths:");
     expect(mergedContent).toContain("topics/planning/sprint-goals.md");
 
-    const pending = await listPendingStageOneDigestItems(dir);
+    const pending = await listPendingDigestItems(dir);
 
     expect(pending.map((entry) => entry.relativePath)).toEqual([
       "notes/discussion_2026-03-09_1.md",
