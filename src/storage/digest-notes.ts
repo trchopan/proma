@@ -147,11 +147,6 @@ function parseDigestCategory(input: string): DigestCategory | null {
 
 function parseDigestSource(input: string): DigestSource | null {
   const value = input.trim().toLowerCase();
-
-  if (value === "figma" || value === "file") {
-    return "document";
-  }
-
   return (DIGEST_SOURCES as readonly string[]).includes(value)
     ? (value as DigestSource)
     : null;
