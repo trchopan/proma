@@ -204,7 +204,7 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
     expect(plan.proposedContent).toContain("## Key Points");
     expect(plan.proposedContent).toContain("## Timeline");
     expect(plan.proposedContent).toContain("## References");
-    expect(plan.proposedContent).toContain("merged_digest_ids:");
+    expect(plan.proposedContent).toContain("digested_note_paths:");
     expect(plan.proposedContent).toContain("notes/discussion_2026-03-09_1.md");
     expect(plan.proposedContent).not.toContain("source_refs:");
     expect(plan.proposedContent).not.toContain("merged_ingest_ids:");
@@ -235,7 +235,7 @@ test("prepareTopicMerge is idempotent for same reference", async () => {
         "  - 'release'",
         "sources:",
         "  - slack",
-        "merged_digest_ids:",
+        "digested_note_paths:",
         "  - 'notes/planning_2026-03-09_1.md'",
         "---",
         "",
