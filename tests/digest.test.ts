@@ -1,19 +1,23 @@
 import { expect, test } from "bun:test";
 
 import {
-  DIGEST_RESPONSE_SCHEMA,
-  type DigestItem,
   generateDigestItems,
   generateMergeContent,
   generateTopicTarget,
-  MERGE_CONTENT_RESPONSE_SCHEMA,
+} from "$/digest/generate";
+import {
   parseDigestItemsResponse,
   parseMergeContentResponse,
   parseTopicRoutingResponse,
-  renderDigestMarkdown,
+} from "$/digest/parsers";
+import { renderDigestMarkdown } from "$/digest/render";
+import {
+  DIGEST_RESPONSE_SCHEMA,
+  MERGE_CONTENT_RESPONSE_SCHEMA,
   TOPIC_ROUTING_RESPONSE_SCHEMA,
-} from "../src/digest";
-import { createBuiltInPromptRegistry } from "../src/prompting/registry";
+} from "$/digest/schemas";
+import type { DigestItem } from "$/digest/types";
+import { createBuiltInPromptRegistry } from "$/prompting/registry";
 
 test("parseDigestItemsResponse accepts structured items object", () => {
   const response = JSON.stringify({

@@ -16,11 +16,11 @@ import {
 } from "./cli/diff-preview";
 import { loadInputImages } from "./cli/image-loader";
 import {
-  type DigestInputImage,
   generateDigestItems,
   generateMergeContent,
   generateTopicTarget,
-} from "./digest";
+} from "./digest/generate";
+import type { DigestInputImage } from "./digest/types";
 import {
   collectCategoryTagPool,
   listPendingDigestItems,

@@ -9,8 +9,8 @@ import {
   parseReportCommandArgs,
   renderDiffPreview,
   runCli,
-} from "../src/cli";
-import type { DigestItem } from "../src/digest";
+} from "$/cli";
+import type { DigestItem } from "$/digest/types";
 
 test("parseDigestCommandArgs parses required and optional args", () => {
   const parsed = parseDigestCommandArgs([
