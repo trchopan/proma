@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 
-import { executePromptOperation } from "../src/prompting/execute";
-import { createBuiltInPromptRegistry } from "../src/prompting/registry";
-import { validatePromptRegistry } from "../src/prompting/validate";
+import { executePromptOperation } from "$/prompting/execute";
+import { createBuiltInPromptRegistry } from "$/prompting/registry";
+import { validatePromptRegistry } from "$/prompting/validate";
 
 test("validatePromptRegistry accepts built-in registry", () => {
   const registry = createBuiltInPromptRegistry();

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import type { DigestItem, TopicRoutingTarget } from "../src/digest";
+import type { DigestItem, TopicRoutingTarget } from "$/digest/types";
 import {
   allocateNextIndex,
   collectCategoryTagPool,
@@ -19,7 +19,7 @@ import {
   writeDigestItems,
   writePreparedTopicMerge,
   writeReportFile,
-} from "../src/files";
+} from "$/files";
 
 async function withTempDir(run: (dir: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(path.join(tmpdir(), "proma-tests-"));

@@ -4,7 +4,7 @@ import {
   buildTopicMergeContent,
   governTags,
   slugifyTopic,
-} from "../src/services/topic-merge";
+} from "$/services/topic-merge";
 
 test("slugifyTopic normalizes user text", () => {
   expect(slugifyTopic(" Incident Response #2 ")).toBe("incident-response-2");

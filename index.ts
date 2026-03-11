@@ -4,4 +4,4 @@ export {
   parseReportCommandArgs,
   renderDiffPreview,
   runCli,
-} from "./src/cli";
+} from "$/cli";
