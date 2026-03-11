@@ -33,10 +33,6 @@ function normalizeSource(input: unknown): DigestSource | null {
 
   const value = input.trim().toLowerCase();
 
-  if (value === "figma" || value === "file") {
-    return "document";
-  }
-
   if (
     value === "slack" ||
     value === "wiki" ||

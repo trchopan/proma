@@ -71,14 +71,7 @@ export function governTags(options: {
 
 function normalizeSources(sources: string[]): DigestSource[] {
   const normalized = sources
-    .map((value) => {
-      const source = value.trim().toLowerCase();
-      if (source === "figma" || source === "file") {
-        return "document";
-      }
-
-      return source;
-    })
+    .map((value) => value.trim().toLowerCase())
     .filter((value): value is DigestSource =>
       (DIGEST_SOURCES as readonly string[]).includes(value),
     );

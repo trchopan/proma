@@ -44,10 +44,7 @@ export function parseReferenceKey(value: string): CanonicalReference | null {
   }
 
   const parsedSource = match[1].trim().toLowerCase();
-  const source =
-    parsedSource === "figma" || parsedSource === "file"
-      ? "document"
-      : parsedSource;
+  const source = parsedSource;
   const link = match[2].trim();
   if (!(DIGEST_SOURCES as readonly string[]).includes(source) || !link) {
     return null;
