@@ -12,6 +12,7 @@ import {
 const TIMELINE_ENTRY_PATTERN = /^\d{4}-\d{2}-\d{2}\s+-\s+.+$/;
 
 type ParseOptions = {
+  category?: DigestCategory;
   allowedSources?: readonly string[];
 };
 
@@ -316,16 +317,85 @@ export function parseMergeContentResponse(
   }
 
   const summary = (parsed as { summary?: unknown }).summary;
+  const category = normalizeCategory(
+    (parsed as { category?: unknown }).category,
+  );
   if (typeof summary !== "string" || summary.trim().length === 0) {
     throw new Error("Merge content response contained empty summary");
   }
 
+  const expectedCategory = options?.category;
+  if (!category) {
+    throw new Error("Merge content response contained invalid category");
+  }
+  if (expectedCategory && category !== expectedCategory) {
+    throw new Error(
+      `Merge content response category mismatch (expected ${expectedCategory}, got ${category})`,
+    );
+  }
+
+  if (category === "discussion") {
+    return {
+      category,
+      summary: summary.trim(),
+      contextBackground: normalizeStringArray(
+        (parsed as { contextBackground?: unknown }).contextBackground,
+      ),
+      resolution: normalizeStringArray(
+        (parsed as { resolution?: unknown }).resolution,
+      ),
+      participants: normalizeStringArray(
+        (parsed as { participants?: unknown }).participants,
+      ),
+      references: normalizeReferences(
+        (parsed as { references?: unknown }).references,
+        normalizedOptions,
+      ),
+      tags: normalizeStringArray((parsed as { tags?: unknown }).tags),
+    };
+  }
+
+  if (category === "research") {
+    return {
+      category,
+      summary: summary.trim(),
+      problemStatement: normalizeStringArray(
+        (parsed as { problemStatement?: unknown }).problemStatement,
+      ),
+      researchPlan: normalizeStringArray(
+        (parsed as { researchPlan?: unknown }).researchPlan,
+      ),
+      keyFindings: normalizeStringArray(
+        (parsed as { keyFindings?: unknown }).keyFindings,
+      ),
+      personInCharge: normalizeStringArray(
+        (parsed as { personInCharge?: unknown }).personInCharge,
+      ),
+      references: normalizeReferences(
+        (parsed as { references?: unknown }).references,
+        normalizedOptions,
+      ),
+      tags: normalizeStringArray((parsed as { tags?: unknown }).tags),
+    };
+  }
+
   return {
+    category,
     summary: summary.trim(),
-    keyPoints: normalizeStringArray(
-      (parsed as { keyPoints?: unknown }).keyPoints,
+    objectivesSuccessCriteria: normalizeStringArray(
+      (parsed as { objectivesSuccessCriteria?: unknown })
+        .objectivesSuccessCriteria,
     ),
+    scope: normalizeStringArray((parsed as { scope?: unknown }).scope),
+    deliverables: normalizeStringArray(
+      (parsed as { deliverables?: unknown }).deliverables,
+    ),
+    plan: normalizeStringArray((parsed as { plan?: unknown }).plan),
     timeline: normalizeTimeline((parsed as { timeline?: unknown }).timeline),
+    teamsIndividualsInvolved: normalizeStringArray(
+      (parsed as { teamsIndividualsInvolved?: unknown })
+        .teamsIndividualsInvolved,
+    ),
     references: normalizeReferences(
       (parsed as { references?: unknown }).references,
       normalizedOptions,

@@ -77,7 +77,6 @@ export function createBuiltInPromptRegistry(options?: {
       ? [...options.allowedSources]
       : [...DIGEST_SOURCES];
   const digestSchema = buildDigestResponseSchema(allowedSources);
-  const mergeContentSchema = buildMergeContentResponseSchema(allowedSources);
 
   return {
     digest: {
@@ -177,13 +176,38 @@ export function createBuiltInPromptRegistry(options?: {
       kind: "merge_content",
       version: "v1",
       buildPrompt: (context) => {
+        const mergeContentSchema = buildMergeContentResponseSchema(
+          context,
+          allowedSources,
+        );
+        const sectionGuidance =
+          context.category === "discussion"
+            ? [
+                "Return sections as: summary, contextBackground, resolution, participants, references, tags.",
+                "Context/Background should capture facts and framing.",
+                "Resolution should capture decisions and agreed outcomes.",
+                "Participants should list teams/individuals involved.",
+              ]
+            : context.category === "research"
+              ? [
+                  "Return sections as: summary, problemStatement, researchPlan, keyFindings, personInCharge, references, tags.",
+                  "Problem Statement should define the question or gap.",
+                  "Research Plan should list experiments/investigation steps.",
+                  "Key Findings should capture evidence-backed outcomes.",
+                  "Person in Charge should list owners.",
+                ]
+              : [
+                  "Return sections as: summary, objectivesSuccessCriteria, scope, deliverables, plan, timeline, teamsIndividualsInvolved, references, tags.",
+                  "Timeline entries must stay in strict format: YYYY-MM-DD - <context>.",
+                  "Objectives / Success Criteria should be concrete and measurable when possible.",
+                ];
         const prompt = [
           "Merge the incoming digest content into the selected topic canonically.",
           "Keep only content directly relevant to the selected topic scope.",
-          "Remove duplicates or near-duplicates from key points and timeline.",
+          "Remove duplicates or near-duplicates from returned arrays.",
           "Do not introduce unrelated schedule/task details.",
-          "Timeline entries must stay in strict format: YYYY-MM-DD - <context>.",
           "Reuse tags from the provided tagPool whenever possible; only add new tags if necessary.",
+          ...sectionGuidance,
           "Selected topic context:",
           JSON.stringify(
             {
@@ -223,8 +247,9 @@ export function createBuiltInPromptRegistry(options?: {
           },
         };
       },
-      parseResponse: (raw) =>
+      parseResponse: (raw, context) =>
         parseMergeContentResponse(raw, {
+          category: context.category,
           allowedSources,
         }),
     },

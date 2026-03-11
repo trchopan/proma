@@ -6,12 +6,14 @@ import type {
   DigestItem,
   DigestReference,
   DigestSource,
+  MergeContentResult,
   TopicRoutingTarget,
 } from "../digest/types";
 import {
-  extractCanonicalTopicData,
+  extractTopicDataByCategory,
   extractTopicTitle,
   firstMeaningfulLine,
+  topicSignalsFromCategoryData,
 } from "../markdown/canonical-topic";
 import { parseFrontMatter } from "../markdown/frontmatter";
 import {
@@ -125,6 +127,7 @@ export type PrepareTopicMergeOptions = {
   projectRoot: string;
   category: DigestCategory;
   item: DigestItem;
+  mergeContent?: MergeContentResult;
   target: TopicRoutingTarget;
   mergedDigestId: string;
   now?: Date;
@@ -169,9 +172,11 @@ export async function listTopicCandidates(
     const absolutePath = path.join(categoryDir, fileName);
     const markdown = await Bun.file(absolutePath).text();
     const parsed = parseFrontMatter(markdown);
-    const canonical = extractCanonicalTopicData(parsed.body, {
+    const fileCategory = category;
+    const topicData = extractTopicDataByCategory(parsed.body, fileCategory, {
       allowedSources: activeSources,
     });
+    const canonical = topicSignalsFromCategoryData(fileCategory, topicData);
     const slug = fileName.slice(0, -3);
     const topic = extractTopicTitle(parsed.body) || slug;
     const tags = normalizeTags(parsed.metadata.tags ?? []);
@@ -224,6 +229,7 @@ export async function prepareTopicMerge(
     currentContent,
     category: options.category,
     item: options.item,
+    mergeContent: options.mergeContent,
     target: options.target,
     mergedDigestId: options.mergedDigestId,
     now: options.now,

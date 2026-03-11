@@ -150,7 +150,10 @@ Topic file behavior:
 - The topic name is stored in the markdown level-1 title (`# ...`) at the top of the file body.
 - Tag metadata is normalized to lowercase kebab-case, deduplicated, and sorted; merge prefers reusing existing category tags before adding new ones.
 - New topic slugs are normalized to kebab-case and capped at 100 characters.
-- Topic files are canonical-only: each file keeps a single merged `Summary/Key Points/Timeline/References` view.
+- Topic files are canonical-only and category-specific:
+  - `discussion`: `Summary`, `Context/Background`, `Resolution`, `Participants`, `References`
+  - `research`: `Summary`, `Problem Statement`, `Research Plan`, `Key Findings`, `Person in Charge`, `References`
+  - `planning`: `Summary`, `Objectives / Success Criteria`, `Scope`, `Deliverables`, `Plan`, `Timeline`, `Teams/Individuals Involved`, `References`
 - Merge routes each digest note to exactly one primary topic target.
 - Merge pre-ranks candidates deterministically and sends only the top 8 candidates to routing.
 - Merge applies semantic content refinement to reduce unrelated/duplicated key points and timeline entries, with deterministic fallback on failure.
@@ -159,12 +162,11 @@ Topic file behavior:
 
 Generated markdown sections:
 
-- `## Summary`
-- `## Key Points`
-- `## Timeline` (always present; use `- None` when no date context is available)
-- Timeline entries, when present, must use strict `YYYY-MM-DD - <context>` format
-- `## References` entries in `- <source>: <link>` format (example: `- slack: https://...`)
-- Allowed digest/reference sources default to: `slack`, `wiki`, `git`, `document`
+- Digest notes (`notes/*.md`) use: `## Summary`, `## Key Points`, `## Timeline`, `## References`.
+- Topic files (`topics/*/*.md`) use category-specific sections (see Topic file behavior above).
+- Planning timeline entries, when present, must use strict `YYYY-MM-DD - <context>` format.
+- `## References` entries use `- <source>: <link>` format (example: `- slack: https://...`).
+- Allowed digest/reference sources default to: `slack`, `wiki`, `git`, `document`.
 
 Project config override:
 

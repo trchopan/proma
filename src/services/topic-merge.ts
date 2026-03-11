@@ -3,13 +3,14 @@ import {
   type DigestCategory,
   type DigestItem,
   type DigestSource,
+  type MergeContentResult,
   type TopicRoutingTarget,
 } from "../digest/types";
 import {
-  buildCanonicalBody,
-  type CanonicalTopicData,
-  extractCanonicalTopicData,
+  buildTopicBodyByCategory,
+  extractTopicDataByCategory,
   extractTopicTitle,
+  type TopicDataByCategory,
   uniqueOrdered,
 } from "../markdown/canonical-topic";
 import {
@@ -103,7 +104,7 @@ function collectExistingMergedDigestIds(mergedDigestIds: string[]): string[] {
 }
 
 function collectReferenceDigestIds(
-  references: CanonicalTopicData["references"],
+  references: TopicDataByCategory["references"],
 ): string[] {
   return references.map((reference) =>
     toReferenceDigestId(buildReferenceKey(reference.source, reference.link)),
@@ -141,7 +142,7 @@ function buildTopicContent(options: {
   existingMergedDigestIds: string[];
   updatedAt: string;
   topic: string;
-  canonical: CanonicalTopicData;
+  canonical: TopicDataByCategory;
   allowedSources: readonly string[];
 }): string {
   const metadata = buildTopicFrontMatter({
@@ -155,7 +156,11 @@ function buildTopicContent(options: {
     updatedAt: options.updatedAt,
     allowedSources: options.allowedSources,
   });
-  const body = buildCanonicalBody(options.topic, options.canonical);
+  const body = buildTopicBodyByCategory(
+    options.topic,
+    options.category,
+    options.canonical,
+  );
   return `${serializeFrontMatter(metadata)}${body.trim()}\n`;
 }
 
@@ -205,29 +210,34 @@ function buildTopicFrontMatter(options: {
   };
 }
 
-function mergeCanonical(
-  existing: CanonicalTopicData,
-  incoming: DigestItem,
-): CanonicalTopicData {
-  const mergedKeyPoints = uniqueOrdered([
-    ...existing.keyPoints,
-    ...incoming.keyPoints,
-  ]);
-  const mergedTimeline = [
-    ...new Set([...existing.timeline, ...incoming.timeline]),
-  ].sort((a, b) => a.localeCompare(b));
+function sortReferences(
+  references: Array<{ source: DigestSource; link: string }>,
+): Array<{ source: DigestSource; link: string }> {
+  return [...references].sort((a, b) => {
+    const sourceOrder = a.source.localeCompare(b.source);
+    if (sourceOrder !== 0) {
+      return sourceOrder;
+    }
 
+    return a.link.localeCompare(b.link);
+  });
+}
+
+function mergeReferences(
+  existing: Array<{ source: DigestSource; link: string }>,
+  incoming: Array<{ source: DigestSource; link: string }>,
+): Array<{ source: DigestSource; link: string }> {
   const mergedReferenceMap = new Map<
     string,
     { source: DigestSource; link: string }
   >();
-  for (const reference of existing.references) {
+  for (const reference of existing) {
     mergedReferenceMap.set(
       buildReferenceKey(reference.source, reference.link),
       reference,
     );
   }
-  for (const reference of incoming.references) {
+  for (const reference of incoming) {
     mergedReferenceMap.set(
       buildReferenceKey(reference.source, reference.link),
       {
@@ -237,20 +247,176 @@ function mergeCanonical(
     );
   }
 
-  const mergedReferences = [...mergedReferenceMap.values()].sort((a, b) => {
-    const sourceOrder = a.source.localeCompare(b.source);
-    if (sourceOrder !== 0) {
-      return sourceOrder;
-    }
+  return sortReferences([...mergedReferenceMap.values()]);
+}
 
-    return a.link.localeCompare(b.link);
-  });
+function topicDataFromDigestItem(
+  category: DigestCategory,
+  item: DigestItem,
+): TopicDataByCategory {
+  if (category === "discussion") {
+    return {
+      summary: item.summary,
+      contextBackground: uniqueOrdered(item.keyPoints),
+      resolution: [],
+      participants: [],
+      references: sortReferences(item.references),
+    };
+  }
+
+  if (category === "research") {
+    return {
+      summary: item.summary,
+      problemStatement: uniqueOrdered(item.keyPoints),
+      researchPlan: [],
+      keyFindings: [],
+      personInCharge: [],
+      references: sortReferences(item.references),
+    };
+  }
 
   return {
+    summary: item.summary,
+    objectivesSuccessCriteria: uniqueOrdered(item.keyPoints),
+    scope: [],
+    deliverables: [],
+    plan: [],
+    timeline: [...new Set(item.timeline)].sort((a, b) => a.localeCompare(b)),
+    teamsIndividualsInvolved: [],
+    references: sortReferences(item.references),
+  };
+}
+
+function topicDataFromMergeContent(
+  content: MergeContentResult,
+): TopicDataByCategory {
+  if (content.category === "discussion") {
+    return {
+      summary: content.summary,
+      contextBackground: content.contextBackground,
+      resolution: content.resolution,
+      participants: content.participants,
+      references: sortReferences(content.references),
+    };
+  }
+
+  if (content.category === "research") {
+    return {
+      summary: content.summary,
+      problemStatement: content.problemStatement,
+      researchPlan: content.researchPlan,
+      keyFindings: content.keyFindings,
+      personInCharge: content.personInCharge,
+      references: sortReferences(content.references),
+    };
+  }
+
+  return {
+    summary: content.summary,
+    objectivesSuccessCriteria: content.objectivesSuccessCriteria,
+    scope: content.scope,
+    deliverables: content.deliverables,
+    plan: content.plan,
+    timeline: [...new Set(content.timeline)].sort((a, b) => a.localeCompare(b)),
+    teamsIndividualsInvolved: content.teamsIndividualsInvolved,
+    references: sortReferences(content.references),
+  };
+}
+
+function mergeTopicData(
+  category: DigestCategory,
+  existing: TopicDataByCategory,
+  incoming: TopicDataByCategory,
+): TopicDataByCategory {
+  if (category === "discussion") {
+    const existingDiscussion = existing as Extract<
+      TopicDataByCategory,
+      { contextBackground: string[] }
+    >;
+    const incomingDiscussion = incoming as Extract<
+      TopicDataByCategory,
+      { contextBackground: string[] }
+    >;
+    return {
+      summary: existing.summary || incoming.summary,
+      contextBackground: uniqueOrdered([
+        ...existingDiscussion.contextBackground,
+        ...incomingDiscussion.contextBackground,
+      ]),
+      resolution: uniqueOrdered([
+        ...existingDiscussion.resolution,
+        ...incomingDiscussion.resolution,
+      ]),
+      participants: uniqueOrdered([
+        ...existingDiscussion.participants,
+        ...incomingDiscussion.participants,
+      ]),
+      references: mergeReferences(existing.references, incoming.references),
+    };
+  }
+
+  if (category === "research") {
+    const existingResearch = existing as Extract<
+      TopicDataByCategory,
+      { problemStatement: string[] }
+    >;
+    const incomingResearch = incoming as Extract<
+      TopicDataByCategory,
+      { problemStatement: string[] }
+    >;
+    return {
+      summary: existing.summary || incoming.summary,
+      problemStatement: uniqueOrdered([
+        ...existingResearch.problemStatement,
+        ...incomingResearch.problemStatement,
+      ]),
+      researchPlan: uniqueOrdered([
+        ...existingResearch.researchPlan,
+        ...incomingResearch.researchPlan,
+      ]),
+      keyFindings: uniqueOrdered([
+        ...existingResearch.keyFindings,
+        ...incomingResearch.keyFindings,
+      ]),
+      personInCharge: uniqueOrdered([
+        ...existingResearch.personInCharge,
+        ...incomingResearch.personInCharge,
+      ]),
+      references: mergeReferences(existing.references, incoming.references),
+    };
+  }
+
+  const existingPlanning = existing as Extract<
+    TopicDataByCategory,
+    { objectivesSuccessCriteria: string[] }
+  >;
+  const incomingPlanning = incoming as Extract<
+    TopicDataByCategory,
+    { objectivesSuccessCriteria: string[] }
+  >;
+  return {
     summary: existing.summary || incoming.summary,
-    keyPoints: mergedKeyPoints,
-    timeline: mergedTimeline,
-    references: mergedReferences,
+    objectivesSuccessCriteria: uniqueOrdered([
+      ...existingPlanning.objectivesSuccessCriteria,
+      ...incomingPlanning.objectivesSuccessCriteria,
+    ]),
+    scope: uniqueOrdered([
+      ...existingPlanning.scope,
+      ...incomingPlanning.scope,
+    ]),
+    deliverables: uniqueOrdered([
+      ...existingPlanning.deliverables,
+      ...incomingPlanning.deliverables,
+    ]),
+    plan: uniqueOrdered([...existingPlanning.plan, ...incomingPlanning.plan]),
+    timeline: [
+      ...new Set([...existingPlanning.timeline, ...incomingPlanning.timeline]),
+    ].sort((a, b) => a.localeCompare(b)),
+    teamsIndividualsInvolved: uniqueOrdered([
+      ...existingPlanning.teamsIndividualsInvolved,
+      ...incomingPlanning.teamsIndividualsInvolved,
+    ]),
+    references: mergeReferences(existing.references, incoming.references),
   };
 }
 
@@ -260,6 +426,7 @@ export function buildTopicMergeContent(options: {
   item: DigestItem;
   target: TopicRoutingTarget;
   mergedDigestId: string;
+  mergeContent?: MergeContentResult;
   now?: Date;
   allowedSources?: readonly string[];
 }): BuiltTopicMerge {
@@ -273,7 +440,7 @@ export function buildTopicMergeContent(options: {
     extractTopicTitle(parsed.body) ||
     options.target.topic.trim() ||
     (options.target.shortDescription?.trim() ?? "Untitled topic");
-  const existing = extractCanonicalTopicData(parsed.body, {
+  const existing = extractTopicDataByCategory(parsed.body, options.category, {
     allowedSources,
   });
   const existingMergedDigestIds = collectExistingMergedDigestIds(
@@ -296,7 +463,11 @@ export function buildTopicMergeContent(options: {
     };
   }
 
-  const mergedCanonical = mergeCanonical(existing, options.item);
+  const incoming =
+    options.mergeContent && options.mergeContent.category === options.category
+      ? topicDataFromMergeContent(options.mergeContent)
+      : topicDataFromDigestItem(options.category, options.item);
+  const mergedCanonical = mergeTopicData(options.category, existing, incoming);
   const stableContent = buildTopicContent({
     existingMetadata: parsed.metadata,
     category: options.category,

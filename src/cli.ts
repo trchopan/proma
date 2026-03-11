@@ -21,7 +21,11 @@ import {
   generateMergeContent,
   generateTopicTarget,
 } from "./digest/generate";
-import type { DigestInputImage } from "./digest/types";
+import type {
+  DigestInputImage,
+  MergeContentInput,
+  MergeContentResult,
+} from "./digest/types";
 import {
   collectCategoryTagPool,
   listPendingDigestItems,
@@ -261,7 +265,7 @@ async function runMergeCommand(
       target.action === "update_existing"
         ? candidates.find((candidate) => candidate.slug === target.slug)
         : null;
-    let itemForMerge = digestNote.item;
+    let mergeContentForPlan: MergeContentResult | undefined;
     let targetForMerge = {
       ...target,
       tags: governTags({
@@ -273,35 +277,64 @@ async function runMergeCommand(
 
     if (!parsed.dryRun) {
       try {
-        const merged = await deps.generateMergeContent(
-          {
-            category: digestNote.item.category,
-            topic: target.topic,
-            tags: targetForMerge.tags,
-            existing: {
-              summary: selectedCandidate?.summary ?? "",
-              keyPoints: selectedCandidate?.keyPoints ?? [],
-              timeline: selectedCandidate?.timeline ?? [],
-              references: selectedCandidate?.references ?? [],
-            },
-            incoming: digestNote.item,
-            tagPool,
-          },
-          {
-            model: parsed.model,
-            logger,
-            promptRegistry,
-            dryRun: parsed.dryRun,
-          },
-        );
+        const mergeContentInput: MergeContentInput =
+          digestNote.item.category === "discussion"
+            ? {
+                category: "discussion",
+                topic: target.topic,
+                tags: targetForMerge.tags,
+                existing: {
+                  summary: selectedCandidate?.summary ?? "",
+                  contextBackground: selectedCandidate?.keyPoints ?? [],
+                  resolution: [],
+                  participants: [],
+                  references: selectedCandidate?.references ?? [],
+                },
+                incoming: digestNote.item,
+                tagPool,
+              }
+            : digestNote.item.category === "research"
+              ? {
+                  category: "research",
+                  topic: target.topic,
+                  tags: targetForMerge.tags,
+                  existing: {
+                    summary: selectedCandidate?.summary ?? "",
+                    problemStatement: selectedCandidate?.keyPoints ?? [],
+                    researchPlan: selectedCandidate?.timeline ?? [],
+                    keyFindings: [],
+                    personInCharge: [],
+                    references: selectedCandidate?.references ?? [],
+                  },
+                  incoming: digestNote.item,
+                  tagPool,
+                }
+              : {
+                  category: "planning",
+                  topic: target.topic,
+                  tags: targetForMerge.tags,
+                  existing: {
+                    summary: selectedCandidate?.summary ?? "",
+                    objectivesSuccessCriteria:
+                      selectedCandidate?.keyPoints ?? [],
+                    scope: [],
+                    deliverables: [],
+                    plan: [],
+                    timeline: selectedCandidate?.timeline ?? [],
+                    teamsIndividualsInvolved: [],
+                    references: selectedCandidate?.references ?? [],
+                  },
+                  incoming: digestNote.item,
+                  tagPool,
+                };
+        const merged = await deps.generateMergeContent(mergeContentInput, {
+          model: parsed.model,
+          logger,
+          promptRegistry,
+          dryRun: parsed.dryRun,
+        });
 
-        itemForMerge = {
-          ...digestNote.item,
-          summary: merged.summary,
-          keyPoints: merged.keyPoints,
-          timeline: merged.timeline,
-          references: merged.references,
-        };
+        mergeContentForPlan = merged;
         targetForMerge = {
           ...targetForMerge,
           tags: governTags({
@@ -326,7 +359,8 @@ async function runMergeCommand(
     const plan = await deps.prepareTopicMerge({
       projectRoot,
       category: digestNote.item.category,
-      item: itemForMerge,
+      item: digestNote.item,
+      mergeContent: mergeContentForPlan,
       target: targetForMerge,
       mergedDigestId: digestNote.relativePath,
       allowedSources,

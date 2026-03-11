@@ -381,16 +381,27 @@ test("generateTopicTarget passes candidate slugs and strict schema", async () =>
 
 test("parseMergeContentResponse validates canonical merge payload", () => {
   const response = JSON.stringify({
+    category: "planning",
     summary: "Merged release policy summary",
-    keyPoints: ["Keep monthly cadence"],
+    objectivesSuccessCriteria: ["Keep monthly cadence"],
+    scope: ["Release policy decisions"],
+    deliverables: ["Updated policy doc"],
+    plan: ["Review policy monthly"],
     timeline: ["2026-03-13 - Publish decision"],
+    teamsIndividualsInvolved: ["Release managers"],
     references: [{ source: "slack", link: "https://example.com/thread" }],
     tags: ["release-cadence", "hotfix-process"],
   });
 
-  const parsed = parseMergeContentResponse(response);
+  const parsed = parseMergeContentResponse(response, {
+    category: "planning",
+  });
 
+  expect(parsed.category).toBe("planning");
   expect(parsed.summary).toBe("Merged release policy summary");
+  if (parsed.category !== "planning") {
+    throw new Error("Expected planning merge payload");
+  }
   expect(parsed.timeline).toEqual(["2026-03-13 - Publish decision"]);
   expect(parsed.references).toEqual([
     { source: "slack", link: "https://example.com/thread" },
@@ -411,8 +422,12 @@ test("generateMergeContent uses strict schema", async () => {
       tags: ["release-cadence"],
       existing: {
         summary: "Existing summary",
-        keyPoints: [],
+        objectivesSuccessCriteria: [],
+        scope: [],
+        deliverables: [],
+        plan: [],
         timeline: [],
+        teamsIndividualsInvolved: [],
         references: [],
       },
       incoming: {
@@ -432,9 +447,14 @@ test("generateMergeContent uses strict schema", async () => {
     async (options) => {
       capturedOptions = { responseFormat: options.responseFormat };
       return JSON.stringify({
+        category: "planning",
         summary: "Refined summary",
-        keyPoints: ["Keep cadence"],
+        objectivesSuccessCriteria: ["Keep cadence"],
+        scope: [],
+        deliverables: [],
+        plan: [],
         timeline: ["2026-03-13 - Decision"],
+        teamsIndividualsInvolved: [],
         references: [],
         tags: ["release-cadence"],
       });

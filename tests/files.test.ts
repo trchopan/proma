@@ -267,8 +267,9 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
     expect(plan.proposedContent).toContain("  - 'incident-response'");
     expect(plan.proposedContent).toContain("  - 'post-mortem'");
     expect(plan.proposedContent).toContain("## Summary");
-    expect(plan.proposedContent).toContain("## Key Points");
-    expect(plan.proposedContent).toContain("## Timeline");
+    expect(plan.proposedContent).toContain("## Context/Background");
+    expect(plan.proposedContent).toContain("## Resolution");
+    expect(plan.proposedContent).toContain("## Participants");
     expect(plan.proposedContent).toContain("## References");
     expect(plan.proposedContent).toContain("digested_note_paths:");
     expect(plan.proposedContent).toContain("notes/discussion_2026-03-09_1.md");
