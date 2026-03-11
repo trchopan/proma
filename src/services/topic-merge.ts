@@ -4,7 +4,7 @@ import {
   type DigestItem,
   type DigestSource,
   type TopicRoutingTarget,
-} from "../digest";
+} from "../digest/types";
 import {
   buildCanonicalBody,
   type CanonicalTopicData,

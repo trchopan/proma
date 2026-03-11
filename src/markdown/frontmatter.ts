@@ -1,4 +1,4 @@
-import type { DigestCategory, DigestSource } from "../digest";
+import type { DigestCategory, DigestSource } from "../digest/types";
 
 export type TopicFrontMatter = {
   category: DigestCategory;

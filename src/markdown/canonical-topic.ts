@@ -1,4 +1,4 @@
-import { DIGEST_SOURCES, type DigestSource } from "../digest";
+import { DIGEST_SOURCES, type DigestSource } from "../digest/types";
 
 export type CanonicalReference = { source: DigestSource; link: string };
 

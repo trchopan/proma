@@ -6,7 +6,7 @@ import type {
   DigestItem,
   DigestReference,
   TopicRoutingTarget,
-} from "../digest";
+} from "../digest/types";
 import {
   extractCanonicalTopicData,
   extractTopicTitle,

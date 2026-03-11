@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import type { DigestInputImage } from "../digest";
+import type { DigestInputImage } from "../digest/types";
 import type { Logger } from "../logging";
 
 const MARKDOWN_IMAGE_REGEX = /!\[[^\]]*\]\(([^)]+)\)/g;

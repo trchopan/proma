@@ -1,11 +1,13 @@
 import {
-  DIGEST_RESPONSE_SCHEMA,
-  MERGE_CONTENT_RESPONSE_SCHEMA,
   parseDigestItemsResponse,
   parseMergeContentResponse,
   parseTopicRoutingResponse,
+} from "../digest/parsers";
+import {
+  DIGEST_RESPONSE_SCHEMA,
+  MERGE_CONTENT_RESPONSE_SCHEMA,
   TOPIC_ROUTING_RESPONSE_SCHEMA,
-} from "../digest";
+} from "../digest/schemas";
 import { parseReportResponse, REPORT_RESPONSE_SCHEMA } from "../report";
 import type { PromptRegistry } from "./types";
 
