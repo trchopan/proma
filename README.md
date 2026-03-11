@@ -1,6 +1,6 @@
 # Proma - Project Management Toolkit powered by LLMs
 
-Source: ![github](https://github.com/trchopan/proma)
+Source: [https://github.com/trchopan/proma](https://github.com/trchopan/proma)
 
 ## Get started
 
@@ -16,39 +16,6 @@ Set your API key:
 
 ```bash
 export OPENAI_API_KEY="your_api_key"
-```
-
-Create `proma.config.ts` (or `.js`/`.mjs`) in your repository root:
-
-For full plugin architecture, recipes, and troubleshooting, see `PLUGIN_SYSTEM.md`.
-
-```ts
-export default {
-  plugins: [
-    {
-      name: "custom-report-tone",
-      setup(api) {
-        api.patchOperation("report", (current) => ({
-          ...current,
-          buildPrompt(context) {
-            const built = current.buildPrompt(context);
-            return {
-              ...built,
-              messages: built.messages.map((message) =>
-                message.role === "system"
-                  ? {
-                      ...message,
-                      content: `${message.content}\nUse a neutral executive tone.`,
-                    }
-                  : message,
-              ),
-            };
-          },
-        }));
-      },
-    },
-  ],
-};
 ```
 
 Optional scripts:
@@ -67,7 +34,6 @@ Then run `bun run digest`, `bun run merge`, and `bun run report`.
 
 Notes:
 
-- Supported config files are `proma.config.ts`, `proma.config.js`, and `proma.config.mjs`.
 - `report` defaults to `weekly` when `--period` is omitted.
 - Use `--dry-run` to preview AI requests and planned actions without sending requests or writing files.
 
@@ -122,11 +88,7 @@ Prompting and schema control is centralized in `src/prompting/`:
 
 - `src/prompting/registry.ts` contains built-in operation definitions for `digest`, `merge`, and `report`
 - `src/prompting/execute.ts` runs model calls from operation contracts
-- `src/prompting/load.ts` loads optional user plugins from `proma.config.ts|js|mjs`
-- `src/prompting/validate.ts` validates composed registry contracts at startup
-
-Plugin order is deterministic: plugins run in declaration order and later patches can override earlier ones.
-Need advanced plugin examples (`overrideOperation`, multi-plugin order, troubleshooting)? See `PLUGIN_SYSTEM.md`.
+- `src/prompting/validate.ts` validates registry contracts at startup
 
 Examples:
 

@@ -33,7 +33,7 @@ import {
   writeStageOneDigestItems,
 } from "./files";
 import { createLogger, type Logger } from "./logging";
-import { loadPromptRegistry } from "./prompting/load";
+import { createBuiltInPromptRegistry } from "./prompting/registry";
 import type { PromptRegistry } from "./prompting/types";
 import { validatePromptRegistry } from "./prompting/validate";
 import { generateReport, renderReportMarkdown } from "./report";
@@ -68,10 +68,6 @@ type CliDependencies = {
     out: (message: string) => void;
     err: (message: string) => void;
   }) => Promise<Logger>;
-  loadPromptRegistry: (
-    cwd?: string,
-    configFileName?: string,
-  ) => Promise<PromptRegistry>;
   validatePromptRegistry: (registry: PromptRegistry) => void;
 };
 
@@ -429,7 +425,6 @@ export async function runCli(
     readTextFile: defaultReadTextFile,
     confirmMerge: defaultConfirmMerge,
     createLogger,
-    loadPromptRegistry,
     validatePromptRegistry,
     ...dependencies,
   };
@@ -475,7 +470,7 @@ export async function runCli(
   }
 
   try {
-    const promptRegistry = await deps.loadPromptRegistry(process.cwd());
+    const promptRegistry = createBuiltInPromptRegistry();
     deps.validatePromptRegistry(promptRegistry);
 
     if (command === "digest") {

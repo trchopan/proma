@@ -33,12 +33,11 @@ function sampleContext(kind: ProcessingKind): unknown {
 }
 
 /**
- * Validates that a composed prompt registry satisfies required runtime
+ * Validates that a prompt registry satisfies required runtime
  * contracts before CLI command execution.
  *
  * This enforces that all required operations exist and that each operation
- * still returns Structured Outputs (`json_schema`) after plugin patches or
- * overrides.
+ * returns Structured Outputs (`json_schema`).
  *
  * Throws a descriptive `Error` when any contract check fails.
  */
