@@ -7,7 +7,8 @@ import type {
   MergeContentResult,
   TopicRoutingCandidate,
   TopicRoutingTarget,
-} from "../digest";
+} from "../digest/types";
+
 import type {
   BaseReportContext,
   ReportInputContext,

@@ -1,14 +1,13 @@
 import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
-
+import { renderDigestMarkdown } from "../digest/render";
 import {
   DIGEST_CATEGORIES,
   DIGEST_SOURCES,
   type DigestCategory,
   type DigestItem,
   type DigestSource,
-  renderDigestMarkdown,
-} from "../digest";
+} from "../digest/types";
 import { extractCanonicalTopicData } from "../markdown/canonical-topic";
 import {
   parseScalarFrontMatterEntries,
