@@ -37,8 +37,12 @@ function sampleContext(kind: ProcessingKind): unknown {
       tags: ["release-cadence"],
       existing: {
         summary: "Current policy summary",
-        keyPoints: [],
+        objectivesSuccessCriteria: [],
+        scope: [],
+        deliverables: [],
+        plan: [],
         timeline: [],
+        teamsIndividualsInvolved: [],
         references: [],
       },
       incoming: {

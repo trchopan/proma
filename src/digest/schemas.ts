@@ -1,4 +1,8 @@
-import { DIGEST_CATEGORIES, DIGEST_SOURCES } from "./types";
+import {
+  DIGEST_CATEGORIES,
+  DIGEST_SOURCES,
+  type MergeContentInput,
+} from "./types";
 
 export function buildDigestResponseSchema(allowedSources: readonly string[]) {
   return {
@@ -104,14 +108,121 @@ export const TOPIC_ROUTING_RESPONSE_SCHEMA = {
 } as const;
 
 export function buildMergeContentResponseSchema(
+  input: MergeContentInput,
   allowedSources: readonly string[],
 ) {
+  const shared = {
+    category: {
+      type: "string",
+      enum: [input.category],
+    },
+    summary: { type: "string" },
+    references: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          source: {
+            type: "string",
+            enum: [...allowedSources],
+          },
+          link: { type: "string" },
+        },
+        required: ["source", "link"],
+      },
+    },
+    tags: {
+      type: "array",
+      items: { type: "string" },
+    },
+  } as const;
+
+  if (input.category === "discussion") {
+    return {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        ...shared,
+        contextBackground: {
+          type: "array",
+          items: { type: "string" },
+        },
+        resolution: {
+          type: "array",
+          items: { type: "string" },
+        },
+        participants: {
+          type: "array",
+          items: { type: "string" },
+        },
+      },
+      required: [
+        "category",
+        "summary",
+        "contextBackground",
+        "resolution",
+        "participants",
+        "references",
+        "tags",
+      ],
+    } as const;
+  }
+
+  if (input.category === "research") {
+    return {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        ...shared,
+        problemStatement: {
+          type: "array",
+          items: { type: "string" },
+        },
+        researchPlan: {
+          type: "array",
+          items: { type: "string" },
+        },
+        keyFindings: {
+          type: "array",
+          items: { type: "string" },
+        },
+        personInCharge: {
+          type: "array",
+          items: { type: "string" },
+        },
+      },
+      required: [
+        "category",
+        "summary",
+        "problemStatement",
+        "researchPlan",
+        "keyFindings",
+        "personInCharge",
+        "references",
+        "tags",
+      ],
+    } as const;
+  }
+
   return {
     type: "object",
     additionalProperties: false,
     properties: {
-      summary: { type: "string" },
-      keyPoints: {
+      ...shared,
+      objectivesSuccessCriteria: {
+        type: "array",
+        items: { type: "string" },
+      },
+      scope: {
+        type: "array",
+        items: { type: "string" },
+      },
+      deliverables: {
+        type: "array",
+        items: { type: "string" },
+      },
+      plan: {
         type: "array",
         items: { type: "string" },
       },
@@ -119,29 +230,50 @@ export function buildMergeContentResponseSchema(
         type: "array",
         items: { type: "string" },
       },
-      references: {
-        type: "array",
-        items: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            source: {
-              type: "string",
-              enum: [...allowedSources],
-            },
-            link: { type: "string" },
-          },
-          required: ["source", "link"],
-        },
-      },
-      tags: {
+      teamsIndividualsInvolved: {
         type: "array",
         items: { type: "string" },
       },
     },
-    required: ["summary", "keyPoints", "timeline", "references", "tags"],
+    required: [
+      "category",
+      "summary",
+      "objectivesSuccessCriteria",
+      "scope",
+      "deliverables",
+      "plan",
+      "timeline",
+      "teamsIndividualsInvolved",
+      "references",
+      "tags",
+    ],
   } as const;
 }
 
-export const MERGE_CONTENT_RESPONSE_SCHEMA =
-  buildMergeContentResponseSchema(DIGEST_SOURCES);
+export const MERGE_CONTENT_RESPONSE_SCHEMA = buildMergeContentResponseSchema(
+  {
+    category: "planning",
+    topic: "Release Cadence Policy",
+    tags: ["release-cadence"],
+    existing: {
+      summary: "Current policy summary",
+      objectivesSuccessCriteria: [],
+      scope: [],
+      deliverables: [],
+      plan: [],
+      timeline: [],
+      teamsIndividualsInvolved: [],
+      references: [],
+    },
+    incoming: {
+      category: "planning",
+      source: "slack",
+      summary: "Incoming summary",
+      keyPoints: [],
+      timeline: [],
+      references: [],
+    },
+    tagPool: [],
+  },
+  DIGEST_SOURCES,
+);
