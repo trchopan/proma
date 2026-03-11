@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import {
   DIGEST_SOURCES,
   type DigestCategory,
@@ -25,6 +23,8 @@ export type BuiltTopicMerge = {
   hasChanges: boolean;
 };
 
+export const MAX_TOPIC_SLUG_LENGTH = 100;
+
 export function slugifyTopic(input: string): string {
   const normalized = input
     .trim()
@@ -33,7 +33,12 @@ export function slugifyTopic(input: string): string {
     .replace(/^-+|-+$/g, "")
     .replace(/-{2,}/g, "-");
 
-  return normalized.length > 0 ? normalized : "untitled-topic";
+  const truncated = normalized
+    .slice(0, MAX_TOPIC_SLUG_LENGTH)
+    .replace(/-+$/g, "")
+    .replace(/^-+/g, "");
+
+  return truncated.length > 0 ? truncated : "untitled-topic";
 }
 
 export function normalizeTags(tags: string[]): string[] {
@@ -72,56 +77,43 @@ function buildReferenceKey(source: DigestSource, link: string): string {
   return `${source}: ${link}`;
 }
 
-function computeDigestIdentity(item: DigestItem): string {
-  const refs = computeReferenceKeys(item).sort();
-  if (refs.length > 0) {
-    return `refs:${refs.join("|")}`;
-  }
-
-  const hashInput = JSON.stringify({
-    source: item.source,
-    summary: item.summary,
-    keyPoints: item.keyPoints,
-    timeline: item.timeline,
-  });
-
-  return `hash:${createHash("sha1").update(hashInput).digest("hex")}`;
-}
-
 function toReferenceDigestId(referenceKey: string): string {
   return `refs:${referenceKey}`;
 }
 
-function collectExistingDigestIds(options: {
-  mergedDigestIds: string[];
-  references: CanonicalTopicData["references"];
-}): string[] {
-  const metadataDigestIds = options.mergedDigestIds
+function collectExistingMergedDigestIds(mergedDigestIds: string[]): string[] {
+  return mergedDigestIds
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
-  const referenceDigestIds = options.references.map((reference) =>
+}
+
+function collectReferenceDigestIds(
+  references: CanonicalTopicData["references"],
+): string[] {
+  return references.map((reference) =>
     toReferenceDigestId(buildReferenceKey(reference.source, reference.link)),
   );
-
-  return uniqueOrdered([...metadataDigestIds, ...referenceDigestIds]);
 }
 
 function hasDigestIdentity(options: {
-  existingDigestIds: string[];
+  existingMergedDigestIds: string[];
+  existingReferenceDigestIds: string[];
+  mergedDigestId: string;
   item: DigestItem;
-}): { isMerged: boolean; digestId: string } {
-  const digestId = computeDigestIdentity(options.item);
+}): { isMerged: boolean } {
   const incomingRefDigestIds = computeReferenceKeys(options.item).map(
     toReferenceDigestId,
   );
-  const hasDigestId = options.existingDigestIds.includes(digestId);
+  const hasMergedDigestId = options.existingMergedDigestIds.includes(
+    options.mergedDigestId,
+  );
   const hasAllReferences =
     incomingRefDigestIds.length > 0 &&
     incomingRefDigestIds.every((referenceDigestId) =>
-      options.existingDigestIds.includes(referenceDigestId),
+      options.existingReferenceDigestIds.includes(referenceDigestId),
     );
 
-  return { isMerged: hasDigestId || hasAllReferences, digestId };
+  return { isMerged: hasMergedDigestId || hasAllReferences };
 }
 
 function buildTopicContent(options: {
@@ -130,8 +122,8 @@ function buildTopicContent(options: {
   item: DigestItem;
   target: TopicRoutingTarget;
   nowIso: string;
-  digestId: string;
-  existingDigestIds: string[];
+  mergedDigestId: string;
+  existingMergedDigestIds: string[];
   updatedAt: string;
   topic: string;
   canonical: CanonicalTopicData;
@@ -142,8 +134,8 @@ function buildTopicContent(options: {
     item: options.item,
     target: options.target,
     nowIso: options.nowIso,
-    digestId: options.digestId,
-    existingDigestIds: options.existingDigestIds,
+    mergedDigestId: options.mergedDigestId,
+    existingMergedDigestIds: options.existingMergedDigestIds,
     updatedAt: options.updatedAt,
   });
   const body = buildCanonicalBody(options.topic, options.canonical);
@@ -156,8 +148,8 @@ function buildTopicFrontMatter(options: {
   item: DigestItem;
   target: TopicRoutingTarget;
   nowIso: string;
-  digestId: string;
-  existingDigestIds: string[];
+  mergedDigestId: string;
+  existingMergedDigestIds: string[];
   updatedAt: string;
 }): TopicFrontMatter {
   const {
@@ -166,8 +158,8 @@ function buildTopicFrontMatter(options: {
     item,
     target,
     nowIso,
-    digestId,
-    existingDigestIds,
+    mergedDigestId,
+    existingMergedDigestIds,
     updatedAt,
   } = options;
 
@@ -179,7 +171,10 @@ function buildTopicFrontMatter(options: {
     ...(existingMetadata.sources ?? []),
     item.source,
   ]);
-  const mergedDigestIds = uniqueOrdered([...existingDigestIds, digestId]);
+  const mergedDigestIds = uniqueOrdered([
+    ...existingMergedDigestIds,
+    mergedDigestId,
+  ]);
 
   return {
     category,
@@ -245,6 +240,7 @@ export function buildTopicMergeContent(options: {
   category: DigestCategory;
   item: DigestItem;
   target: TopicRoutingTarget;
+  mergedDigestId: string;
   now?: Date;
 }): BuiltTopicMerge {
   const nowIso = (options.now ?? new Date()).toISOString();
@@ -254,12 +250,16 @@ export function buildTopicMergeContent(options: {
     options.target.topic.trim() ||
     (options.target.shortDescription?.trim() ?? "Untitled topic");
   const existing = extractCanonicalTopicData(parsed.body);
-  const existingDigestIds = collectExistingDigestIds({
-    mergedDigestIds: parsed.metadata.merged_digest_ids ?? [],
-    references: existing.references,
-  });
+  const existingMergedDigestIds = collectExistingMergedDigestIds(
+    parsed.metadata.merged_digest_ids ?? [],
+  );
+  const existingReferenceDigestIds = collectReferenceDigestIds(
+    existing.references,
+  );
   const identity = hasDigestIdentity({
-    existingDigestIds,
+    existingMergedDigestIds,
+    existingReferenceDigestIds,
+    mergedDigestId: options.mergedDigestId,
     item: options.item,
   });
 
@@ -277,8 +277,8 @@ export function buildTopicMergeContent(options: {
     item: options.item,
     target: options.target,
     nowIso,
-    digestId: identity.digestId,
-    existingDigestIds,
+    mergedDigestId: options.mergedDigestId,
+    existingMergedDigestIds,
     updatedAt: parsed.metadata.updated_at ?? nowIso,
     topic,
     canonical: mergedCanonical,
@@ -298,8 +298,8 @@ export function buildTopicMergeContent(options: {
       item: options.item,
       target: options.target,
       nowIso,
-      digestId: identity.digestId,
-      existingDigestIds,
+      mergedDigestId: options.mergedDigestId,
+      existingMergedDigestIds,
       updatedAt: nowIso,
       topic,
       canonical: mergedCanonical,

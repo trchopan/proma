@@ -31,7 +31,63 @@ type StageOneFrontMatter = {
   category: DigestCategory;
   source: DigestSource;
   merged: boolean;
+  merged_topic_paths: string[];
 };
+
+function parseArrayItemValue(raw: string): string {
+  return raw.trim().replace(/^['"]|['"]$/g, "");
+}
+
+function parseFrontMatterStringArray(
+  frontMatter: string,
+  key: string,
+): string[] {
+  const lines = frontMatter.split("\n");
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    const match = line.match(/^\s*([a-z_]+):\s*(.*)$/);
+    if (!match || match[1] !== key) {
+      continue;
+    }
+
+    const inlineValue = (match[2] ?? "").trim();
+    if (inlineValue.length > 0) {
+      if (!inlineValue.startsWith("[") || !inlineValue.endsWith("]")) {
+        return [];
+      }
+
+      const inner = inlineValue.slice(1, -1).trim();
+      if (inner.length === 0) {
+        return [];
+      }
+
+      return inner
+        .split(",")
+        .map(parseArrayItemValue)
+        .filter((value) => value.length > 0);
+    }
+
+    const values: string[] = [];
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const itemLine = lines[j] ?? "";
+      const itemMatch = itemLine.match(/^\s*-\s+(.+)$/);
+      if (!itemMatch?.[1]) {
+        break;
+      }
+
+      const value = parseArrayItemValue(itemMatch[1]);
+      if (value.length > 0) {
+        values.push(value);
+      }
+      i = j;
+    }
+
+    return values;
+  }
+
+  return [];
+}
 
 function toDateString(now: Date): string {
   return now.toISOString().slice(0, 10);
@@ -142,6 +198,10 @@ function parseStageOneFrontMatter(
     category,
     source,
     merged,
+    merged_topic_paths: parseFrontMatterStringArray(
+      frontMatter,
+      "merged_topic_paths",
+    ),
   };
 }
 
@@ -151,23 +211,34 @@ function renderStageOneFrontMatter(metadata: StageOneFrontMatter): string {
     `category: ${metadata.category}`,
     `source: ${metadata.source}`,
     `merged: ${metadata.merged ? "true" : "false"}`,
+    "merged_topic_paths:",
+    ...metadata.merged_topic_paths.map((topicPath) => `  - '${topicPath}'`),
     "---",
     "",
   ].join("\n");
 }
 
-function renderStageOneDigestFile(item: DigestItem, merged: boolean): string {
+function renderStageOneDigestFile(
+  item: DigestItem,
+  merged: boolean,
+  mergedTopicPaths: string[],
+): string {
   return `${renderStageOneFrontMatter({
     category: item.category,
     source: item.source,
     merged,
+    merged_topic_paths: [...new Set(mergedTopicPaths)],
   })}${renderDigestMarkdown(item)}`;
 }
 
 function parseStageOneDigestItem(
   markdown: string,
   fileName: string,
-): { item: DigestItem; merged: boolean } {
+): {
+  item: DigestItem;
+  merged: boolean;
+  mergedTopicPaths: string[];
+} {
   const frontMatter = parseStageOneFrontMatter(markdown);
   const { body } = splitFrontMatter(markdown);
   const canonical = extractCanonicalTopicData(body);
@@ -190,6 +261,7 @@ function parseStageOneDigestItem(
       references: canonical.references,
     },
     merged: frontMatter.merged,
+    mergedTopicPaths: frontMatter.merged_topic_paths,
   };
 }
 
@@ -214,7 +286,7 @@ export async function writeStageOneDigestItems(
       index,
     );
     const absolutePath = path.join(options.projectRoot, relativePath);
-    const markdown = renderStageOneDigestFile(item, false);
+    const markdown = renderStageOneDigestFile(item, false, []);
 
     await Bun.write(absolutePath, markdown);
 
@@ -269,6 +341,7 @@ export async function listPendingStageOneDigestItems(
 
 export async function markStageOneDigestItemMerged(
   absolutePath: string,
+  mergedTopicPaths: string[],
 ): Promise<void> {
   const markdown = await Bun.file(absolutePath).text();
   const fileName = path.basename(absolutePath);
@@ -278,5 +351,11 @@ export async function markStageOneDigestItemMerged(
     return;
   }
 
-  await Bun.write(absolutePath, renderStageOneDigestFile(staged.item, true));
+  await Bun.write(
+    absolutePath,
+    renderStageOneDigestFile(staged.item, true, [
+      ...staged.mergedTopicPaths,
+      ...mergedTopicPaths,
+    ]),
+  );
 }

@@ -103,7 +103,7 @@ export function createBuiltInPromptRegistry(): PromptRegistry {
           "Prefer update_existing when a candidate clearly matches.",
           "Use create_new when no candidate is a close match.",
           "You may return multiple targets if the digest item belongs in multiple existing topics.",
-          "For create_new, provide shortDescription suitable for a kebab-case filename.",
+          "For create_new, provide shortDescription suitable for a kebab-case filename (max 100 characters after normalization).",
           "Return tags as concise lowercase phrases.",
           "Digest item:",
           JSON.stringify(context.item, null, 2),

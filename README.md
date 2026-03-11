@@ -140,14 +140,16 @@ Report behavior:
 
 Stage-1 note behavior:
 
-- Stage-1 files include YAML front matter with `category`, `source`, and `merged`.
+- Stage-1 files include YAML front matter with `category`, `source`, `merged`, and `merged_topic_paths`.
 - `merge` only picks files where `merged` is not `true`.
 
 Topic file behavior:
 
 - Topic files include YAML front matter metadata (`category`, `created_at`, `updated_at`, `tags`, `sources`, `merged_digest_ids`).
+- `merged_digest_ids` stores merged stage-note IDs (project-relative note paths such as `notes/planning_2026-03-09_1.md`).
 - The topic name is stored in the markdown level-1 title (`# ...`) at the top of the file body.
 - Tag metadata is normalized to lowercase kebab-case, deduplicated, and sorted.
+- New topic slugs are normalized to kebab-case and capped at 100 characters.
 - Topic files are canonical-only: each file keeps a single merged `Summary/Key Points/Timeline/References` view.
 - Repeated ingestion of already-merged references becomes a no-op (`No topic change`).
 - After topic targets are selected, the CLI shows a diff preview for each proposed merge and asks for confirmation (`y` to apply, default `N` to skip).

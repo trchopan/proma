@@ -9,6 +9,12 @@ test("slugifyTopic normalizes user text", () => {
   expect(slugifyTopic(" Incident Response #2 ")).toBe("incident-response-2");
 });
 
+test("slugifyTopic truncates long slugs to 100 chars", () => {
+  const slug = slugifyTopic("a ".repeat(120));
+  expect(slug.length).toBeLessThanOrEqual(100);
+  expect(slug).not.toEndWith("-");
+});
+
 test("buildTopicMergeContent is no-op when digest id already merged", () => {
   const currentContent = [
     "---",
@@ -20,7 +26,7 @@ test("buildTopicMergeContent is no-op when digest id already merged", () => {
     "sources:",
     "  - slack",
     "merged_digest_ids:",
-    "  - 'refs:slack: https://example.com/thread'",
+    "  - 'notes/planning_2026-03-09_1.md'",
     "---",
     "",
     "# Release Policy",
@@ -56,6 +62,7 @@ test("buildTopicMergeContent is no-op when digest id already merged", () => {
       topic: "Release Policy",
       tags: ["release"],
     },
+    mergedDigestId: "notes/planning_2026-03-09_1.md",
   });
 
   expect(result.hasChanges).toBe(false);
@@ -109,10 +116,12 @@ test("buildTopicMergeContent ignores legacy source_refs when merging", () => {
       topic: "Release Policy",
       tags: ["release"],
     },
+    mergedDigestId: "notes/planning_2026-03-09_2.md",
   });
 
   expect(result.hasChanges).toBe(true);
   expect(result.proposedContent).toContain("merged_digest_ids:");
+  expect(result.proposedContent).toContain("notes/planning_2026-03-09_2.md");
   expect(result.proposedContent).not.toContain("source_refs:");
 });
 
@@ -165,6 +174,7 @@ test("buildTopicMergeContent emits references in deterministic order", () => {
       topic: "Release Policy",
       tags: ["release"],
     },
+    mergedDigestId: "notes/planning_2026-03-09_3.md",
   });
 
   const githubRefIndex = result.proposedContent.indexOf(

@@ -235,6 +235,7 @@ async function runMergeCommand(
     await logger.debug("merge.targets", "Generated topic routing targets", {
       targetCount: targets.length,
     });
+    const mergedTopicPathsForStage: string[] = [];
 
     for (const target of targets) {
       const plan = await deps.prepareTopicMerge({
@@ -242,6 +243,7 @@ async function runMergeCommand(
         category: stagedItem.item.category,
         item: stagedItem.item,
         target,
+        mergedDigestId: stagedItem.relativePath,
       });
 
       if (!plan.hasChanges) {
@@ -283,6 +285,7 @@ async function runMergeCommand(
         await deps.writePreparedTopicMerge(plan);
       }
       mergedFiles.push(plan.targetPath);
+      mergedTopicPathsForStage.push(plan.relativeTargetPath);
       if (!parsed.dryRun) {
         await logger.progress(
           "merge.applied",
@@ -302,7 +305,10 @@ async function runMergeCommand(
         `Dry run: would mark staged note as merged: ${stagedItem.absolutePath}`,
       );
     } else {
-      await deps.markStageOneDigestItemMerged(stagedItem.absolutePath);
+      await deps.markStageOneDigestItemMerged(
+        stagedItem.absolutePath,
+        mergedTopicPathsForStage,
+      );
       completedStagedItems += 1;
       await logger.progress(
         "merge.marked_staged",
