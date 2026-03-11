@@ -52,6 +52,9 @@ export type TopicRoutingCandidate = {
   topic: string;
   tags: string[];
   summary: string;
+  keyPoints: string[];
+  timeline: string[];
+  references: DigestReference[];
 };
 
 export type TopicRoutingTarget = {
@@ -62,7 +65,36 @@ export type TopicRoutingTarget = {
   tags: string[];
 };
 
+export type MergeContentInput = {
+  category: DigestCategory;
+  topic: string;
+  tags: string[];
+  existing: {
+    summary: string;
+    keyPoints: string[];
+    timeline: string[];
+    references: DigestReference[];
+  };
+  incoming: DigestItem;
+  tagPool: string[];
+};
+
+export type MergeContentResult = {
+  summary: string;
+  keyPoints: string[];
+  timeline: string[];
+  references: DigestReference[];
+  tags: string[];
+};
+
 export type TopicRoutingOptions = {
+  model: string;
+  logger?: Logger;
+  promptRegistry: PromptRegistry;
+  dryRun?: boolean;
+};
+
+export type MergeContentOptions = {
   model: string;
   logger?: Logger;
   promptRegistry: PromptRegistry;
@@ -149,29 +181,62 @@ export const TOPIC_ROUTING_RESPONSE_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    targets: {
+    target: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        action: {
+          type: "string",
+          enum: ["update_existing", "create_new"],
+        },
+        slug: { type: ["string", "null"] },
+        shortDescription: { type: ["string", "null"] },
+        topic: { type: "string" },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+        },
+      },
+      required: ["action", "slug", "shortDescription", "topic", "tags"],
+    },
+  },
+  required: ["target"],
+} as const;
+
+export const MERGE_CONTENT_RESPONSE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    summary: { type: "string" },
+    keyPoints: {
+      type: "array",
+      items: { type: "string" },
+    },
+    timeline: {
+      type: "array",
+      items: { type: "string" },
+    },
+    references: {
       type: "array",
       items: {
         type: "object",
         additionalProperties: false,
         properties: {
-          action: {
+          source: {
             type: "string",
-            enum: ["update_existing", "create_new"],
+            enum: [...DIGEST_SOURCES],
           },
-          slug: { type: ["string", "null"] },
-          shortDescription: { type: ["string", "null"] },
-          topic: { type: "string" },
-          tags: {
-            type: "array",
-            items: { type: "string" },
-          },
+          link: { type: "string" },
         },
-        required: ["action", "slug", "shortDescription", "topic", "tags"],
+        required: ["source", "link"],
       },
     },
+    tags: {
+      type: "array",
+      items: { type: "string" },
+    },
   },
-  required: ["targets"],
+  required: ["summary", "keyPoints", "timeline", "references", "tags"],
 } as const;
 
 function normalizeCategory(input: unknown): DigestCategory | null {
@@ -410,7 +475,7 @@ export async function generateDigestItems(
 export function parseTopicRoutingResponse(
   content: string,
   candidates: TopicRoutingCandidate[],
-): TopicRoutingTarget[] {
+): TopicRoutingTarget {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
@@ -418,102 +483,83 @@ export function parseTopicRoutingResponse(
     throw new Error("Topic routing response was not valid JSON");
   }
 
-  const rawTargets =
-    parsed &&
-    typeof parsed === "object" &&
-    Array.isArray((parsed as { targets?: unknown[] }).targets)
-      ? (parsed as { targets: unknown[] }).targets
+  const rawTarget =
+    parsed && typeof parsed === "object"
+      ? (parsed as { target?: unknown }).target
       : null;
 
-  if (!rawTargets || rawTargets.length === 0) {
-    throw new Error("Topic routing response must include at least one target");
+  if (!rawTarget || typeof rawTarget !== "object") {
+    throw new Error("Topic routing response must include one target object");
   }
 
   const validSlugs = new Set(candidates.map((candidate) => candidate.slug));
-  const normalizedTargets: TopicRoutingTarget[] = [];
+  const actionValue = (rawTarget as { action?: unknown }).action;
+  const topicValue = (rawTarget as { topic?: unknown }).topic;
+  const slugValue = (rawTarget as { slug?: unknown }).slug;
+  const shortDescriptionValue = (rawTarget as { shortDescription?: unknown })
+    .shortDescription;
+  const tagsValue = (rawTarget as { tags?: unknown }).tags;
 
-  for (const rawTarget of rawTargets) {
-    if (!rawTarget || typeof rawTarget !== "object") {
-      continue;
-    }
+  const action =
+    actionValue === "update_existing" || actionValue === "create_new"
+      ? actionValue
+      : null;
 
-    const actionValue = (rawTarget as { action?: unknown }).action;
-    const topicValue = (rawTarget as { topic?: unknown }).topic;
-    const slugValue = (rawTarget as { slug?: unknown }).slug;
-    const shortDescriptionValue = (rawTarget as { shortDescription?: unknown })
-      .shortDescription;
-    const tagsValue = (rawTarget as { tags?: unknown }).tags;
+  if (!action) {
+    throw new Error("Topic routing target contained invalid action");
+  }
 
-    const action =
-      actionValue === "update_existing" || actionValue === "create_new"
-        ? actionValue
-        : null;
+  if (typeof topicValue !== "string" || topicValue.trim().length === 0) {
+    throw new Error("Topic routing target contained empty topic");
+  }
 
-    if (!action) {
-      throw new Error("Topic routing target contained invalid action");
-    }
+  const tags = normalizeStringArray(tagsValue);
 
-    if (typeof topicValue !== "string" || topicValue.trim().length === 0) {
-      throw new Error("Topic routing target contained empty topic");
-    }
-
-    const tags = normalizeStringArray(tagsValue);
-
-    if (action === "update_existing") {
-      if (typeof slugValue !== "string" || slugValue.trim().length === 0) {
-        throw new Error(
-          "Topic routing target for update_existing must include a slug",
-        );
-      }
-
-      const slug = slugValue.trim();
-      if (!validSlugs.has(slug)) {
-        throw new Error(
-          `Topic routing target referenced unknown slug: ${slug}`,
-        );
-      }
-
-      normalizedTargets.push({
-        action,
-        slug,
-        topic: topicValue.trim(),
-        tags,
-      });
-      continue;
-    }
-
-    const shortDescription =
-      typeof shortDescriptionValue === "string"
-        ? shortDescriptionValue.trim()
-        : "";
-
-    if (shortDescription.length === 0 && topicValue.trim().length === 0) {
+  if (action === "update_existing") {
+    if (typeof slugValue !== "string" || slugValue.trim().length === 0) {
       throw new Error(
-        "Topic routing target for create_new must include shortDescription or topic",
+        "Topic routing target for update_existing must include a slug",
       );
     }
 
-    normalizedTargets.push({
+    const slug = slugValue.trim();
+    if (!validSlugs.has(slug)) {
+      throw new Error(`Topic routing target referenced unknown slug: ${slug}`);
+    }
+
+    return {
       action,
-      shortDescription,
+      slug,
       topic: topicValue.trim(),
       tags,
-    });
+    };
   }
 
-  if (normalizedTargets.length === 0) {
-    throw new Error("Topic routing response did not contain any valid targets");
+  const shortDescription =
+    typeof shortDescriptionValue === "string"
+      ? shortDescriptionValue.trim()
+      : "";
+
+  if (shortDescription.length === 0 && topicValue.trim().length === 0) {
+    throw new Error(
+      "Topic routing target for create_new must include shortDescription or topic",
+    );
   }
 
-  return normalizedTargets;
+  return {
+    action,
+    shortDescription,
+    topic: topicValue.trim(),
+    tags,
+  };
 }
 
-export async function generateTopicTargets(
+export async function generateTopicTarget(
   item: DigestItem,
   candidates: TopicRoutingCandidate[],
   options: TopicRoutingOptions,
   chatCompletion?: (options: ChatCompletionOptions) => Promise<string>,
-): Promise<TopicRoutingTarget[]> {
+): Promise<TopicRoutingTarget> {
   return executePromptOperation(
     options.promptRegistry,
     "merge",
@@ -521,6 +567,54 @@ export async function generateTopicTargets(
       item,
       candidates,
     },
+    {
+      model: options.model,
+      logger: options.logger,
+      dryRun: options.dryRun,
+      chatCompletion,
+    },
+  );
+}
+
+export function parseMergeContentResponse(content: string): MergeContentResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error("Merge content response was not valid JSON");
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Merge content response must be an object");
+  }
+
+  const summary = (parsed as { summary?: unknown }).summary;
+  if (typeof summary !== "string" || summary.trim().length === 0) {
+    throw new Error("Merge content response contained empty summary");
+  }
+
+  return {
+    summary: summary.trim(),
+    keyPoints: normalizeStringArray(
+      (parsed as { keyPoints?: unknown }).keyPoints,
+    ),
+    timeline: normalizeTimeline((parsed as { timeline?: unknown }).timeline),
+    references: normalizeReferences(
+      (parsed as { references?: unknown }).references,
+    ),
+    tags: normalizeStringArray((parsed as { tags?: unknown }).tags),
+  };
+}
+
+export async function generateMergeContent(
+  input: MergeContentInput,
+  options: MergeContentOptions,
+  chatCompletion?: (options: ChatCompletionOptions) => Promise<string>,
+): Promise<MergeContentResult> {
+  return executePromptOperation(
+    options.promptRegistry,
+    "merge_content",
+    input,
     {
       model: options.model,
       logger: options.logger,

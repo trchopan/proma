@@ -1,6 +1,11 @@
 import type { ProcessingKind, PromptRegistry } from "./types";
 
-const REQUIRED_KINDS: ProcessingKind[] = ["digest", "merge", "report"];
+const REQUIRED_KINDS: ProcessingKind[] = [
+  "digest",
+  "merge",
+  "merge_content",
+  "report",
+];
 
 function sampleContext(kind: ProcessingKind): unknown {
   if (kind === "digest") {
@@ -22,6 +27,29 @@ function sampleContext(kind: ProcessingKind): unknown {
         references: [],
       },
       candidates: [],
+    };
+  }
+
+  if (kind === "merge_content") {
+    return {
+      category: "planning",
+      topic: "Release Cadence Policy",
+      tags: ["release-cadence"],
+      existing: {
+        summary: "Current policy summary",
+        keyPoints: [],
+        timeline: [],
+        references: [],
+      },
+      incoming: {
+        category: "planning",
+        source: "slack",
+        summary: "Incoming summary",
+        keyPoints: [],
+        timeline: [],
+        references: [],
+      },
+      tagPool: [],
     };
   }
 

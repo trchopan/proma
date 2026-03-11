@@ -1,6 +1,8 @@
 import {
   DIGEST_RESPONSE_SCHEMA,
+  MERGE_CONTENT_RESPONSE_SCHEMA,
   parseDigestItemsResponse,
+  parseMergeContentResponse,
   parseTopicRoutingResponse,
   TOPIC_ROUTING_RESPONSE_SCHEMA,
 } from "../digest";
@@ -31,6 +33,9 @@ function buildMergeCandidateText(context: {
     topic: string;
     tags: string[];
     summary: string;
+    keyPoints: string[];
+    timeline: string[];
+    references: Array<{ source: string; link: string }>;
   }>;
 }): string {
   if (context.candidates.length === 0) {
@@ -41,7 +46,22 @@ function buildMergeCandidateText(context: {
     .map((candidate) => {
       const tagsText =
         candidate.tags.length > 0 ? candidate.tags.join(", ") : "none";
-      return `- slug: ${candidate.slug}; topic: ${candidate.topic}; tags: ${tagsText}; summary: ${candidate.summary}`;
+      const keyPointsText =
+        candidate.keyPoints.length > 0
+          ? candidate.keyPoints.slice(0, 4).join(" | ")
+          : "none";
+      const timelineText =
+        candidate.timeline.length > 0
+          ? candidate.timeline.slice(0, 3).join(" | ")
+          : "none";
+      const referencesText =
+        candidate.references.length > 0
+          ? candidate.references
+              .slice(0, 3)
+              .map((reference) => `${reference.source}: ${reference.link}`)
+              .join(" | ")
+          : "none";
+      return `- slug: ${candidate.slug}; topic: ${candidate.topic}; tags: ${tagsText}; summary: ${candidate.summary}; keyPoints: ${keyPointsText}; timeline: ${timelineText}; references: ${referencesText}`;
     })
     .join("\n");
 }
@@ -99,10 +119,11 @@ export function createBuiltInPromptRegistry(): PromptRegistry {
       buildPrompt: (context) => {
         const candidateText = buildMergeCandidateText(context);
         const prompt = [
-          "Route this digest item into one or more topic files.",
-          "Prefer update_existing when a candidate clearly matches.",
-          "Use create_new when no candidate is a close match.",
-          "You may return multiple targets if the digest item belongs in multiple existing topics.",
+          "Route this digest item into exactly one primary topic file.",
+          "Prefer update_existing when a candidate clearly matches semantic scope.",
+          "Use create_new only when no candidate is a close match.",
+          "Avoid cross-topic contamination: do not mix policy decisions with release plan/schedule execution topics unless the digest is genuinely about both.",
+          "Prefer reusing existing tags from candidates when possible; only add new tags when required.",
           "For create_new, provide shortDescription suitable for a kebab-case filename (max 100 characters after normalization).",
           "Return tags as concise lowercase phrases.",
           "Digest item:",
@@ -127,7 +148,7 @@ export function createBuiltInPromptRegistry(): PromptRegistry {
           responseFormat: {
             type: "json_schema",
             json_schema: {
-              name: "topic_routing_targets",
+              name: "topic_routing_target",
               strict: true,
               schema: TOPIC_ROUTING_RESPONSE_SCHEMA,
             },
@@ -136,6 +157,58 @@ export function createBuiltInPromptRegistry(): PromptRegistry {
       },
       parseResponse: (raw, context) =>
         parseTopicRoutingResponse(raw, context.candidates),
+    },
+    merge_content: {
+      kind: "merge_content",
+      version: "v1",
+      buildPrompt: (context) => {
+        const prompt = [
+          "Merge the incoming digest content into the selected topic canonically.",
+          "Keep only content directly relevant to the selected topic scope.",
+          "Remove duplicates or near-duplicates from key points and timeline.",
+          "Do not introduce unrelated schedule/task details.",
+          "Timeline entries must stay in strict format: YYYY-MM-DD - <context>.",
+          "Reuse tags from the provided tagPool whenever possible; only add new tags if necessary.",
+          "Selected topic context:",
+          JSON.stringify(
+            {
+              category: context.category,
+              topic: context.topic,
+              tags: context.tags,
+              existing: context.existing,
+              tagPool: context.tagPool,
+            },
+            null,
+            2,
+          ),
+          "Incoming digest item:",
+          JSON.stringify(context.incoming, null, 2),
+        ].join("\n\n");
+
+        return {
+          temperature: 0.2,
+          messages: [
+            {
+              role: "system" as const,
+              content:
+                "You merge digest content into canonical topic content and must satisfy the provided response schema. Output all human-readable text in English.",
+            },
+            {
+              role: "user" as const,
+              content: prompt,
+            },
+          ],
+          responseFormat: {
+            type: "json_schema",
+            json_schema: {
+              name: "topic_merge_content",
+              strict: true,
+              schema: MERGE_CONTENT_RESPONSE_SCHEMA,
+            },
+          },
+        };
+      },
+      parseResponse: (raw) => parseMergeContentResponse(raw),
     },
     report: {
       kind: "report",

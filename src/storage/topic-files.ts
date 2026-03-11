@@ -1,7 +1,12 @@
 import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 
-import type { DigestCategory, DigestItem, TopicRoutingTarget } from "../digest";
+import type {
+  DigestCategory,
+  DigestItem,
+  DigestReference,
+  TopicRoutingTarget,
+} from "../digest";
 import {
   extractCanonicalTopicData,
   extractTopicTitle,
@@ -19,7 +24,101 @@ export type TopicCandidate = {
   topic: string;
   tags: string[];
   summary: string;
+  keyPoints: string[];
+  timeline: string[];
+  references: DigestReference[];
 };
+
+const MAX_CANDIDATE_KEY_POINTS = 6;
+const MAX_CANDIDATE_TIMELINE = 6;
+const MAX_CANDIDATE_REFERENCES = 6;
+
+function tokenize(value: string): string[] {
+  return value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/g)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3);
+}
+
+function overlapScore(left: string[], right: string[]): number {
+  if (left.length === 0 || right.length === 0) {
+    return 0;
+  }
+
+  const rightSet = new Set(right);
+  let matches = 0;
+  for (const token of left) {
+    if (rightSet.has(token)) {
+      matches += 1;
+    }
+  }
+
+  return matches;
+}
+
+function buildItemTokens(item: DigestItem): string[] {
+  return [
+    ...tokenize(item.summary),
+    ...item.keyPoints.flatMap((point) => tokenize(point)),
+    ...item.timeline.flatMap((entry) => tokenize(entry)),
+  ];
+}
+
+function buildCandidateTokens(candidate: TopicCandidate): string[] {
+  return [
+    ...tokenize(candidate.topic),
+    ...candidate.tags.flatMap((tag) => tokenize(tag)),
+    ...tokenize(candidate.summary),
+    ...candidate.keyPoints.flatMap((point) => tokenize(point)),
+    ...candidate.timeline.flatMap((entry) => tokenize(entry)),
+  ];
+}
+
+export function rankTopicCandidates(
+  item: DigestItem,
+  candidates: TopicCandidate[],
+  limit = 8,
+): TopicCandidate[] {
+  const itemTokens = buildItemTokens(item);
+  const itemReferenceLinks = new Set(
+    item.references.map((reference) => reference.link),
+  );
+
+  const ranked = candidates
+    .map((candidate) => {
+      const candidateTokens = buildCandidateTokens(candidate);
+      const tokenOverlap = overlapScore(itemTokens, candidateTokens);
+      const tagOverlap = overlapScore(
+        item.keyPoints.flatMap((value) => tokenize(value)),
+        candidate.tags.flatMap((tag) => tokenize(tag)),
+      );
+      const referenceOverlap = candidate.references.reduce(
+        (score, reference) => {
+          return itemReferenceLinks.has(reference.link) ? score + 5 : score;
+        },
+        0,
+      );
+
+      return {
+        candidate,
+        score: tokenOverlap + tagOverlap * 2 + referenceOverlap,
+      };
+    })
+    .sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+
+      return a.candidate.slug.localeCompare(b.candidate.slug);
+    });
+
+  return ranked.slice(0, Math.max(1, limit)).map((entry) => entry.candidate);
+}
+
+export function collectCategoryTagPool(candidates: TopicCandidate[]): string[] {
+  return normalizeTags(candidates.flatMap((candidate) => candidate.tags));
+}
 
 export type PrepareTopicMergeOptions = {
   projectRoot: string;
@@ -75,6 +174,9 @@ export async function listTopicCandidates(
       topic,
       tags,
       summary,
+      keyPoints: canonical.keyPoints.slice(0, MAX_CANDIDATE_KEY_POINTS),
+      timeline: canonical.timeline.slice(0, MAX_CANDIDATE_TIMELINE),
+      references: canonical.references.slice(0, MAX_CANDIDATE_REFERENCES),
     });
   }
 
