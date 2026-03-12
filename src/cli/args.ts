@@ -25,6 +25,7 @@ export type MergeArgs = {
   model: string;
   verbose: boolean;
   dryRun: boolean;
+  autoMerge: boolean;
 };
 
 export type ReportArgs = {
@@ -105,18 +106,19 @@ export function parseDigestCommandArgs(args: string[]): DigestArgs {
 export function parseMergeCommandArgs(args: string[]): MergeArgs {
   const { values, flags } = parseOptionValues(args, {
     valueOptions: new Set(["--project", "--model"]),
-    flagOptions: new Set(["--verbose", "--dry-run"]),
+    flagOptions: new Set(["--verbose", "--dry-run", "--auto-merge"]),
   });
   const project = values.get("--project")?.[0];
   const model = values.get("--model")?.[0] ?? DEFAULT_MODEL;
   const verbose = flags.has("--verbose");
   const dryRun = flags.has("--dry-run");
+  const autoMerge = flags.has("--auto-merge");
 
   if (!project) {
     throw new Error("Missing required argument: --project");
   }
 
-  return { project, model, verbose, dryRun };
+  return { project, model, verbose, dryRun, autoMerge };
 }
 
 export function parseReportCommandArgs(args: string[]): ReportArgs {
