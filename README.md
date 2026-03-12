@@ -102,6 +102,7 @@ proma digest --input ./raw.md --project ./acme --dry-run
 proma merge --project ./acme
 proma merge --project ./acme --verbose
 proma merge --project ./acme --dry-run
+proma merge --project ./acme --auto-merge
 
 # report
 proma report --project ./acme --period weekly
@@ -120,6 +121,7 @@ Optional flags:
 - `--model <name>`: override model (example: `proma digest --input ./raw.md --project ./acme --model gpt-4.1-mini`).
 - `--verbose`: enable detailed debug logs.
 - `--dry-run`: skip AI requests and file writes.
+- `--auto-merge`: for `merge` only, auto-apply proposed merges without confirmation (diff previews are still printed).
 
 Note: the digest flow uses OpenAI Structured Outputs (`json_schema`) and fails fast if the selected model does not support it.
 
@@ -158,7 +160,7 @@ Topic file behavior:
 - Merge pre-ranks candidates deterministically and sends only the top 8 candidates to routing.
 - Merge applies semantic content refinement to reduce unrelated/duplicated key points and timeline entries, with deterministic fallback on failure.
 - Repeated ingestion of already-merged references becomes a no-op (`No topic change`).
-- After topic targets are selected, the CLI shows a diff preview for each proposed merge and asks for confirmation (`y` to apply, default `N` to skip).
+- After topic targets are selected, the CLI shows a diff preview for each proposed merge. By default it asks for confirmation (`y` to apply, default `N` to skip); with `--auto-merge`, it applies automatically without prompting.
 
 Generated markdown sections:
 

@@ -96,7 +96,7 @@ function usage(): string {
   return [
     "Usage:",
     "  proma digest --input <file> --project <output-root> [--model <model>] [--verbose] [--dry-run]",
-    "  proma merge --project <output-root> [--model <model>] [--verbose] [--dry-run]",
+    "  proma merge --project <output-root> [--model <model>] [--verbose] [--dry-run] [--auto-merge]",
     "  proma report --project <output-root> [--period <daily|weekly|bi-weekly|monthly>] [--input <file> ...] [--base <file> ...] [--model <model>] [--verbose] [--dry-run]",
   ].join("\n");
 }
@@ -376,9 +376,21 @@ async function runMergeCommand(
         plan.currentContent,
         plan.proposedContent,
       );
-      const approved = parsed.dryRun
-        ? true
-        : await deps.confirmMerge(plan.targetPath, preview);
+      let approved = true;
+      if (!parsed.dryRun) {
+        if (parsed.autoMerge) {
+          await logger.progress(
+            "merge.auto_merge.preview",
+            `\nDiff preview for ${plan.targetPath}:`,
+          );
+          await logger.progress(
+            "merge.auto_merge.preview_diff",
+            supportsAnsiColor() ? colorizeDiffPreview(preview) : preview,
+          );
+        } else {
+          approved = await deps.confirmMerge(plan.targetPath, preview);
+        }
+      }
       await logger.debug("merge.confirmation", "Merge confirmation captured", {
         targetPath: plan.targetPath,
         approved,

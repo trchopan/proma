@@ -80,6 +80,7 @@ test("parseMergeCommandArgs parses required and optional args", () => {
     model: "gpt-4.1",
     verbose: false,
     dryRun: false,
+    autoMerge: false,
   });
 });
 
@@ -91,6 +92,7 @@ test("parseMergeCommandArgs parses --verbose flag", () => {
     model: "gpt-5.2",
     verbose: true,
     dryRun: false,
+    autoMerge: false,
   });
 });
 
@@ -102,6 +104,19 @@ test("parseMergeCommandArgs parses --dry-run flag", () => {
     model: "gpt-5.2",
     verbose: false,
     dryRun: true,
+    autoMerge: false,
+  });
+});
+
+test("parseMergeCommandArgs parses --auto-merge flag", () => {
+  const parsed = parseMergeCommandArgs(["--project", "apollo", "--auto-merge"]);
+
+  expect(parsed).toEqual({
+    project: "apollo",
+    model: "gpt-5.2",
+    verbose: false,
+    dryRun: false,
+    autoMerge: true,
   });
 });
 
@@ -506,6 +521,85 @@ test("runCli merge with --dry-run does not write files", async () => {
     "Dry run: would mark digest note as merged: /tmp/apollo/notes/planning_2026-03-09_1.md",
   );
   expect(output).toContain("Would mark 1 digest note(s) as merged.");
+});
+
+test("runCli merge with --auto-merge prints diff and skips confirmation", async () => {
+  const output: string[] = [];
+  const mockItem: DigestItem = {
+    category: "planning",
+    source: "wiki",
+    summary: "Plan sprint goals.",
+    keyPoints: ["Align scope"],
+    timeline: ["2026-03-09 - Sprint planning kickoff"],
+    references: [],
+  };
+
+  const mergedStageNotes: string[] = [];
+  const mergedTargets: string[] = [];
+
+  const exitCode = await runCli(
+    ["merge", "--project", "apollo", "--auto-merge"],
+    {
+      listPendingDigestItems: async () => [
+        {
+          item: mockItem,
+          absolutePath: "/tmp/apollo/notes/planning_2026-03-09_1.md",
+          relativePath: "notes/planning_2026-03-09_1.md",
+        },
+      ],
+      markDigestItemMerged: async (absolutePath) => {
+        mergedStageNotes.push(absolutePath);
+      },
+      listTopicCandidates: async () => [],
+      rankTopicCandidates: (_item, candidates) => candidates,
+      collectCategoryTagPool: () => [],
+      generateTopicTarget: async () => ({
+        action: "create_new",
+        shortDescription: "sprint-goals",
+        topic: "Sprint Goals",
+        tags: ["sprint"],
+      }),
+      prepareTopicMerge: async () => ({
+        targetPath: "/tmp/apollo/topics/planning/sprint-goals.md",
+        relativeTargetPath: "topics/planning/sprint-goals.md",
+        currentContent: "before",
+        proposedContent: "after",
+        isNew: false,
+        hasChanges: true,
+      }),
+      writePreparedTopicMerge: async (plan) => {
+        mergedTargets.push(plan.targetPath);
+      },
+      confirmMerge: async () => {
+        throw new Error("confirmMerge should not be called in auto-merge mode");
+      },
+    },
+    {
+      out: (message) => {
+        output.push(message);
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(output.join("\n")).toContain(
+    "Diff preview for /tmp/apollo/topics/planning/sprint-goals.md:",
+  );
+  expect(output.join("\n")).toContain("--- current");
+  expect(output.join("\n")).toContain("+++ proposed");
+  expect(output).toContain(
+    "Merged into topic file: /tmp/apollo/topics/planning/sprint-goals.md",
+  );
+  expect(output).toContain("Marked 1 digest note(s) as merged.");
+  expect(mergedTargets).toEqual([
+    "/tmp/apollo/topics/planning/sprint-goals.md",
+  ]);
+  expect(mergedStageNotes).toEqual([
+    "/tmp/apollo/notes/planning_2026-03-09_1.md",
+  ]);
 });
 
 test("runCli report generates report and prints output path", async () => {
