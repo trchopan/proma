@@ -105,6 +105,7 @@ Allowed changes on the release branch:
 - Create release record:
     - `docs/releases/v<major>.<minor>.<patch>.md`
 
+- Update `package.json` version to the release SemVer (without `v` prefix)
 - Consolidate and delete completed backlog tickets from `docs/tickets/`
 - Documentation-only adjustments related to the release
 
