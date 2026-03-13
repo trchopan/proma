@@ -39,7 +39,6 @@ export type ReportArgs = {
 };
 
 export type ImportArgs = {
-  project: string;
   server: string;
   listActions: boolean;
   tool?: string;
@@ -177,17 +176,10 @@ export function parseReportCommandArgs(args: string[]): ReportArgs {
 
 export function parseImportCommandArgs(args: string[]): ImportArgs {
   const { values, flags } = parseOptionValues(args, {
-    valueOptions: new Set([
-      "--project",
-      "--server",
-      "--tool",
-      "--args",
-      "--output",
-    ]),
+    valueOptions: new Set(["--server", "--tool", "--args", "--output"]),
     flagOptions: new Set(["--list-actions", "--verbose", "--dry-run"]),
   });
 
-  const project = values.get("--project")?.[0];
   const server = values.get("--server")?.[0];
   const tool = values.get("--tool")?.[0];
   const rawArgs = values.get("--args")?.[0];
@@ -195,10 +187,6 @@ export function parseImportCommandArgs(args: string[]): ImportArgs {
   const listActions = flags.has("--list-actions");
   const verbose = flags.has("--verbose");
   const dryRun = flags.has("--dry-run");
-
-  if (!project) {
-    throw new Error("Missing required argument: --project");
-  }
 
   if (!server) {
     throw new Error("Missing required argument: --server");
@@ -247,7 +235,6 @@ export function parseImportCommandArgs(args: string[]): ImportArgs {
   }
 
   return {
-    project,
     server,
     listActions,
     tool,

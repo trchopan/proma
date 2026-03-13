@@ -186,15 +186,12 @@ test("parseReportCommandArgs rejects invalid period", () => {
 
 test("parseImportCommandArgs parses action-list mode", () => {
   const parsed = parseImportCommandArgs([
-    "--project",
-    "apollo",
     "--server",
     "mcp.slack",
     "--list-actions",
   ]);
 
   expect(parsed).toEqual({
-    project: "apollo",
     server: "mcp.slack",
     listActions: true,
     tool: undefined,
@@ -207,8 +204,6 @@ test("parseImportCommandArgs parses action-list mode", () => {
 
 test("parseImportCommandArgs parses tool-call mode with args and output", () => {
   const parsed = parseImportCommandArgs([
-    "--project",
-    "apollo",
     "--server",
     "mcp.slack",
     "--tool",
@@ -220,7 +215,6 @@ test("parseImportCommandArgs parses tool-call mode with args and output", () => 
   ]);
 
   expect(parsed).toEqual({
-    project: "apollo",
     server: "mcp.slack",
     listActions: false,
     tool: "fetch_thread",
@@ -237,8 +231,6 @@ test("parseImportCommandArgs parses tool-call mode with args and output", () => 
 test("parseImportCommandArgs enforces exclusive mode selection", () => {
   expect(() =>
     parseImportCommandArgs([
-      "--project",
-      "apollo",
       "--server",
       "mcp.slack",
       "--list-actions",
@@ -247,16 +239,14 @@ test("parseImportCommandArgs enforces exclusive mode selection", () => {
     ]),
   ).toThrow("exactly one of");
 
-  expect(() =>
-    parseImportCommandArgs(["--project", "apollo", "--server", "mcp.slack"]),
-  ).toThrow("exactly one of");
+  expect(() => parseImportCommandArgs(["--server", "mcp.slack"])).toThrow(
+    "exactly one of",
+  );
 });
 
 test("parseImportCommandArgs rejects --args without --tool", () => {
   expect(() =>
     parseImportCommandArgs([
-      "--project",
-      "apollo",
       "--server",
       "mcp.slack",
       "--list-actions",
@@ -268,8 +258,6 @@ test("parseImportCommandArgs rejects --args without --tool", () => {
 
 test("parseImportCommandArgs accepts github server target", () => {
   const parsed = parseImportCommandArgs([
-    "--project",
-    "apollo",
     "--server",
     "github",
     "--list-actions",
@@ -280,21 +268,27 @@ test("parseImportCommandArgs accepts github server target", () => {
 
 test("parseImportCommandArgs rejects legacy bare server names", () => {
   expect(() =>
+    parseImportCommandArgs(["--server", "slack", "--list-actions"]),
+  ).toThrow("expected 'github' or 'mcp.<server_name>'");
+});
+
+test("parseImportCommandArgs rejects removed --project argument", () => {
+  expect(() =>
     parseImportCommandArgs([
       "--project",
       "apollo",
       "--server",
-      "slack",
+      "mcp.slack",
       "--list-actions",
     ]),
-  ).toThrow("expected 'github' or 'mcp.<server_name>'");
+  ).toThrow("Unknown argument: --project");
 });
 
 test("runCli import rejects legacy bare server names", async () => {
   const errors: string[] = [];
 
   const exitCode = await runCli(
-    ["import", "--project", "apollo", "--server", "slack", "--list-actions"],
+    ["import", "--server", "slack", "--list-actions"],
     {},
     {
       out: () => {
@@ -888,14 +882,7 @@ test("runCli import lists actions", async () => {
   const output: string[] = [];
 
   const exitCode = await runCli(
-    [
-      "import",
-      "--project",
-      "apollo",
-      "--server",
-      "mcp.slack",
-      "--list-actions",
-    ],
+    ["import", "--server", "mcp.slack", "--list-actions"],
     {
       loadProjectConfig: async () => ({
         mcp: {
@@ -928,14 +915,12 @@ test("runCli import lists actions", async () => {
   expect(output).toContain("- fetch_thread: Fetch Slack thread as markdown");
 });
 
-test("runCli import tool call writes markdown output", async () => {
+test("runCli import tool call prints markdown output by default", async () => {
   const output: string[] = [];
 
   const exitCode = await runCli(
     [
       "import",
-      "--project",
-      "apollo",
       "--server",
       "mcp.slack",
       "--tool",
@@ -952,15 +937,13 @@ test("runCli import tool call writes markdown output", async () => {
           },
         },
       }),
-      resolveImportOutputPath: async () => "/tmp/apollo/imports/slack.md",
       callMcpTool: async () => ({
         content: [{ type: "text", text: "Imported" }],
       }),
       renderImportedMarkdown: () => "# Imported",
-      writeImportedMarkdown: async () => ({
-        absolutePath: "/tmp/apollo/imports/slack.md",
-        relativePath: "imports/slack.md",
-      }),
+      writeImportedMarkdown: async () => {
+        throw new Error("writeImportedMarkdown should not be called");
+      },
     },
     {
       out: (message) => {
@@ -976,24 +959,23 @@ test("runCli import tool call writes markdown output", async () => {
   expect(output).toContain(
     "Calling MCP tool 'fetch_thread' on server 'mcp.slack'...",
   );
-  expect(output).toContain(
-    "Wrote imported markdown: /tmp/apollo/imports/slack.md",
-  );
+  expect(output).toContain("# Imported");
 });
 
-test("runCli import dry-run avoids MCP calls and writes", async () => {
+test("runCli import tool call writes markdown output when --output is provided", async () => {
   const output: string[] = [];
 
   const exitCode = await runCli(
     [
       "import",
-      "--project",
-      "apollo",
       "--server",
       "mcp.slack",
       "--tool",
       "fetch_thread",
-      "--dry-run",
+      "--args",
+      '{"channel":"C123"}',
+      "--output",
+      "/tmp/apollo/imports/slack.md",
     ],
     {
       loadProjectConfig: async () => ({
@@ -1004,7 +986,45 @@ test("runCli import dry-run avoids MCP calls and writes", async () => {
           },
         },
       }),
-      resolveImportOutputPath: async () => "/tmp/apollo/imports/slack.md",
+      callMcpTool: async () => ({
+        content: [{ type: "text", text: "Imported" }],
+      }),
+      renderImportedMarkdown: () => "# Imported",
+      writeImportedMarkdown: async () => ({
+        absolutePath: "/tmp/apollo/imports/slack.md",
+        relativePath: "slack.md",
+      }),
+    },
+    {
+      out: (message) => {
+        output.push(message);
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(output).toContain(
+    "Wrote imported markdown: /tmp/apollo/imports/slack.md",
+  );
+});
+
+test("runCli import dry-run avoids MCP calls and writes", async () => {
+  const output: string[] = [];
+
+  const exitCode = await runCli(
+    ["import", "--server", "mcp.slack", "--tool", "fetch_thread", "--dry-run"],
+    {
+      loadProjectConfig: async () => ({
+        mcp: {
+          slack: {
+            type: "local",
+            command: ["bun", "./fake-mcp.ts"],
+          },
+        },
+      }),
       callMcpTool: async () => {
         throw new Error("callMcpTool should not be called");
       },
@@ -1023,23 +1043,14 @@ test("runCli import dry-run avoids MCP calls and writes", async () => {
   );
 
   expect(exitCode).toBe(0);
-  expect(output).toContain(
-    "Dry run: would write imported markdown to /tmp/apollo/imports/slack.md",
-  );
+  expect(output).toContain("Dry run: would print imported markdown to stdout");
 });
 
 test("runCli import loads config from current working directory", async () => {
   let capturedConfigRoot = "";
 
   const exitCode = await runCli(
-    [
-      "import",
-      "--project",
-      "tmp/acme",
-      "--server",
-      "mcp.slack",
-      "--list-actions",
-    ],
+    ["import", "--server", "mcp.slack", "--list-actions"],
     {
       loadProjectConfig: async (projectRoot) => {
         capturedConfigRoot = projectRoot;
@@ -1072,7 +1083,7 @@ test("runCli import github lists actions without MCP config", async () => {
   const output: string[] = [];
 
   const exitCode = await runCli(
-    ["import", "--project", "apollo", "--server", "github", "--list-actions"],
+    ["import", "--server", "github", "--list-actions"],
     {
       loadProjectConfig: async () => ({}),
       listGithubTools: () => [
@@ -1206,14 +1217,14 @@ test("runCli import github tool call writes markdown output", async () => {
   const exitCode = await runCli(
     [
       "import",
-      "--project",
-      "apollo",
       "--server",
       "github",
       "--tool",
       "pr_get",
       "--args",
       '{"owner":"acme","repo":"platform","number":42}',
+      "--output",
+      "/tmp/apollo/imports/github-pr.md",
     ],
     {
       loadProjectConfig: async () => ({
@@ -1221,7 +1232,6 @@ test("runCli import github tool call writes markdown output", async () => {
           host: "git.linecorp.com",
         },
       }),
-      resolveImportOutputPath: async () => "/tmp/apollo/imports/github-pr.md",
       callGithubTool: async ({ host }) => {
         capturedHost = host;
         return {
