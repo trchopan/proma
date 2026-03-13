@@ -3,8 +3,10 @@ import readline from "node:readline/promises";
 
 import {
   type DigestArgs,
+  type ImportArgs,
   type MergeArgs,
   parseDigestCommandArgs,
+  parseImportCommandArgs,
   parseMergeCommandArgs,
   parseReportCommandArgs,
   type ReportArgs,
@@ -15,7 +17,11 @@ import {
   supportsAnsiColor,
 } from "./cli/diff-preview";
 import { loadInputImages } from "./cli/image-loader";
-import { loadProjectConfig, resolveDigestAllowedSources } from "./config";
+import {
+  loadProjectConfig,
+  resolveDigestAllowedSources,
+  resolveMcpServer,
+} from "./config";
 import {
   generateDigestItems,
   generateMergeContent,
@@ -28,6 +34,7 @@ import type {
 } from "./digest/types";
 import {
   collectCategoryTagPool,
+  type ImportedFile,
   listPendingDigestItems,
   listTopicCandidates,
   loadReportContext,
@@ -35,11 +42,15 @@ import {
   prepareTopicMerge,
   rankTopicCandidates,
   resolveBaseReportFiles,
+  resolveImportOutputPath,
   resolveReportInputFiles,
   writeDigestItems,
+  writeImportedMarkdown,
   writePreparedTopicMerge,
   writeReportFile,
 } from "./files";
+import { callMcpTool, listMcpTools, type McpTool } from "./import/mcp-client";
+import { renderActionList, renderImportedMarkdown } from "./import/transform";
 import { createLogger, type Logger } from "./logging";
 import { createBuiltInPromptRegistry } from "./prompting/registry";
 import type { PromptRegistry } from "./prompting/types";
@@ -49,12 +60,16 @@ import { governTags } from "./services/topic-merge";
 
 export {
   parseDigestCommandArgs,
+  parseImportCommandArgs,
   parseMergeCommandArgs,
   parseReportCommandArgs,
   renderDiffPreview,
 };
 
 type CliDependencies = {
+  loadProjectConfig: typeof loadProjectConfig;
+  resolveDigestAllowedSources: typeof resolveDigestAllowedSources;
+  resolveMcpServer: typeof resolveMcpServer;
   generateDigestItems: typeof generateDigestItems;
   generateTopicTarget: typeof generateTopicTarget;
   generateMergeContent: typeof generateMergeContent;
@@ -67,6 +82,12 @@ type CliDependencies = {
   collectCategoryTagPool: typeof collectCategoryTagPool;
   prepareTopicMerge: typeof prepareTopicMerge;
   writePreparedTopicMerge: typeof writePreparedTopicMerge;
+  resolveImportOutputPath: typeof resolveImportOutputPath;
+  listMcpTools: typeof listMcpTools;
+  callMcpTool: typeof callMcpTool;
+  renderActionList: typeof renderActionList;
+  renderImportedMarkdown: typeof renderImportedMarkdown;
+  writeImportedMarkdown: typeof writeImportedMarkdown;
   resolveReportInputFiles: typeof resolveReportInputFiles;
   resolveBaseReportFiles: typeof resolveBaseReportFiles;
   loadReportContext: typeof loadReportContext;
@@ -97,6 +118,7 @@ function usage(): string {
     "Usage:",
     "  proma digest --input <file> --project <output-root> [--model <model>] [--verbose] [--dry-run]",
     "  proma merge --project <output-root> [--model <model>] [--verbose] [--dry-run] [--auto-merge]",
+    "  proma import --project <output-root> --server <name> (--list-actions | --tool <name> [--args <json>] [--output <file>]) [--verbose] [--dry-run]",
     "  proma report --project <output-root> [--period <daily|weekly|bi-weekly|monthly>] [--input <file> ...] [--base <file> ...] [--model <model>] [--verbose] [--dry-run]",
   ].join("\n");
 }
@@ -541,12 +563,108 @@ async function runReportCommand(
   return 0;
 }
 
+async function runImportCommand(
+  parsed: ImportArgs,
+  deps: CliDependencies,
+  logger: Logger,
+): Promise<number> {
+  const projectRoot = path.resolve(parsed.project);
+  const configRoot = path.resolve(process.cwd());
+  const projectConfig = await deps.loadProjectConfig(configRoot);
+  const server = deps.resolveMcpServer(projectConfig, parsed.server);
+
+  if (parsed.listActions) {
+    await logger.progress(
+      "import.list_actions.start",
+      `Listing actions for MCP server: ${parsed.server}`,
+    );
+
+    if (parsed.dryRun) {
+      await logger.progress(
+        "import.list_actions.dry_run",
+        `Dry run: would connect to MCP server '${parsed.server}' and list actions.`,
+      );
+      return 0;
+    }
+
+    const tools: McpTool[] = await deps.listMcpTools({
+      server: {
+        command: server.command,
+      },
+    });
+    const rendered = deps.renderActionList({
+      tools,
+      server: parsed.server,
+      verbose: parsed.verbose,
+    });
+    await logger.progress("import.list_actions.output", rendered);
+    return 0;
+  }
+
+  const tool = parsed.tool;
+  if (!tool) {
+    throw new Error("Missing required argument: --tool");
+  }
+
+  const outputPath = await deps.resolveImportOutputPath({
+    projectRoot,
+    server: parsed.server,
+    tool,
+    output: parsed.output,
+  });
+
+  await logger.progress(
+    "import.call.start",
+    `Calling MCP tool '${tool}' on server '${parsed.server}'...`,
+  );
+
+  if (parsed.dryRun) {
+    await logger.progress(
+      "import.call.dry_run",
+      `Dry run: would write imported markdown to ${outputPath}`,
+    );
+    return 0;
+  }
+
+  const result = await deps.callMcpTool({
+    server: {
+      command: server.command,
+    },
+    tool,
+    args: parsed.args,
+  });
+
+  const markdown = deps.renderImportedMarkdown({
+    server: parsed.server,
+    tool,
+    args: parsed.args,
+    result,
+  });
+
+  const written: ImportedFile = await deps.writeImportedMarkdown({
+    projectRoot,
+    server: parsed.server,
+    tool,
+    output: parsed.output,
+    markdown,
+  });
+
+  await logger.progress(
+    "import.call.complete",
+    `Wrote imported markdown: ${written.absolutePath}`,
+  );
+  return 0;
+}
+
 export async function runCli(
   argv: string[],
   dependencies: Partial<CliDependencies> = {},
   io: Partial<CliIO> = {},
 ): Promise<number> {
   const deps: CliDependencies = {
+    loadProjectConfig,
+    resolveDigestAllowedSources,
+    resolveMcpServer,
     generateDigestItems,
     generateTopicTarget,
     generateMergeContent,
@@ -559,6 +677,12 @@ export async function runCli(
     collectCategoryTagPool,
     prepareTopicMerge,
     writePreparedTopicMerge,
+    resolveImportOutputPath,
+    listMcpTools,
+    callMcpTool,
+    renderActionList,
+    renderImportedMarkdown,
+    writeImportedMarkdown,
     resolveReportInputFiles,
     resolveBaseReportFiles,
     loadReportContext,
@@ -586,7 +710,12 @@ export async function runCli(
     : normalizedArgv;
 
   const command = normalizedArgvWithoutGlobalFlags[0];
-  if (command !== "digest" && command !== "merge" && command !== "report") {
+  if (
+    command !== "digest" &&
+    command !== "merge" &&
+    command !== "import" &&
+    command !== "report"
+  ) {
     terminal.err(`Unknown command: ${command ?? "(none)"}`);
     terminal.err(usage());
     return 1;
@@ -616,10 +745,10 @@ export async function runCli(
         ...parseDigestCommandArgs(normalizedArgvWithoutGlobalFlags.slice(1)),
         dryRun: hasGlobalDryRun,
       };
-      const projectConfig = await loadProjectConfig(
-        path.resolve(parsed.project),
+      const projectConfig = await deps.loadProjectConfig(
+        path.resolve(process.cwd()),
       );
-      const allowedSources = resolveDigestAllowedSources(projectConfig);
+      const allowedSources = deps.resolveDigestAllowedSources(projectConfig);
       const promptRegistry = createBuiltInPromptRegistry({
         allowedSources,
       });
@@ -642,10 +771,10 @@ export async function runCli(
         ...parseReportCommandArgs(normalizedArgvWithoutGlobalFlags.slice(1)),
         dryRun: hasGlobalDryRun,
       };
-      const projectConfig = await loadProjectConfig(
-        path.resolve(parsed.project),
+      const projectConfig = await deps.loadProjectConfig(
+        path.resolve(process.cwd()),
       );
-      const allowedSources = resolveDigestAllowedSources(projectConfig);
+      const allowedSources = deps.resolveDigestAllowedSources(projectConfig);
       const promptRegistry = createBuiltInPromptRegistry({
         allowedSources,
       });
@@ -662,12 +791,28 @@ export async function runCli(
       return exitCode;
     }
 
+    if (command === "import") {
+      const parsed = {
+        ...parseImportCommandArgs(normalizedArgvWithoutGlobalFlags.slice(1)),
+        dryRun: hasGlobalDryRun,
+        verbose: hasGlobalVerbose,
+      };
+
+      const exitCode = await runImportCommand(parsed, deps, logger);
+      await logger.debug("cli.complete", "Command completed successfully", {
+        command,
+      });
+      return exitCode;
+    }
+
     const parsed = {
       ...parseMergeCommandArgs(normalizedArgvWithoutGlobalFlags.slice(1)),
       dryRun: hasGlobalDryRun,
     };
-    const projectConfig = await loadProjectConfig(path.resolve(parsed.project));
-    const allowedSources = resolveDigestAllowedSources(projectConfig);
+    const projectConfig = await deps.loadProjectConfig(
+      path.resolve(process.cwd()),
+    );
+    const allowedSources = deps.resolveDigestAllowedSources(projectConfig);
     const promptRegistry = createBuiltInPromptRegistry({
       allowedSources,
     });
