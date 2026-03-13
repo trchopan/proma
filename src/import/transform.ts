@@ -85,7 +85,6 @@ export function renderImportedMarkdown(options: {
 
   const body = [
     "---",
-    "source: mcp",
     `server: ${options.server}`,
     `tool: ${options.tool}`,
     `imported_at: ${generatedAt}`,

@@ -113,12 +113,20 @@ proma report --project ./acme --period weekly
 proma report --project ./acme --period weekly --dry-run
 
 # import action discovery
-proma import --project ./acme --server slack --list-actions
-proma import --project ./acme --server slack --list-actions --verbose
+proma import --project ./acme --server mcp.slack --list-actions
+proma import --project ./acme --server mcp.slack --list-actions --verbose
+
+# import GitHub actions (uses local gh auth)
+proma import --project ./acme --server github --list-actions
 
 # import tool call
-proma import --project ./acme --server slack --tool fetch_thread --args '{"channel":"C123","thread_ts":"1710.123"}'
-proma import --project ./acme --server slack --tool fetch_thread --args '{"channel":"C123"}' --output ./acme/imports/slack-thread.md
+proma import --project ./acme --server mcp.slack --tool fetch_thread --args '{"channel":"C123","thread_ts":"1710.123"}'
+proma import --project ./acme --server mcp.slack --tool fetch_thread --args '{"channel":"C123"}' --output ./acme/imports/slack-thread.md
+
+# import GitHub issue / PR data
+proma import --project ./acme --server github --tool issue_get --args '{"owner":"acme","repo":"platform","number":123}'
+proma import --project ./acme --server github --tool pr_get --args '{"owner":"acme","repo":"platform","number":456}'
+proma import --project ./acme --server github --tool prs_list --args '{"owner":"acme","repo":"platform","author":"alice","state":"all","per_page":20,"page":1}'
 
 # handoff from import -> digest
 proma digest --project ./acme --input ./acme/imports/2026-03-12_slack_fetch-thread.md
@@ -136,8 +144,9 @@ Optional flags:
 - `--model <name>`: override model (example: `proma digest --input ./raw.md --project ./acme --model gpt-4.1-mini`).
 - `--verbose`: enable detailed debug logs.
 - `--dry-run`: skip AI requests and file writes.
+- `--config <file>`: override config file path (default: `<cwd>/proma.config.ts`).
 - `--auto-merge`: for `merge` only, auto-apply proposed merges without confirmation (diff previews are still printed).
-- `--server`: for `import` only, selects the MCP server from project config.
+- `--server`: for `import` only, must be either built-in `github` or `mcp.<server_name>` from project config.
 - `--list-actions`: for `import` only, lists MCP actions for the selected server.
 - `--tool <name>` + `--args <json>`: for `import` only, executes one MCP tool call with JSON object arguments.
 
@@ -192,10 +201,11 @@ Generated markdown sections:
 Project config override:
 
 - Commands discover config from the current working directory (repo root where you run `proma`), not from `--project`.
-- You can extend digest/reference sources with a project config module in that root.
-- File resolution precedence: `proma.config.ts` > `proma.config.mjs` > `proma.config.js`.
+- Default config path is `<cwd>/proma.config.ts`; you can override with `--config <file>`.
+- If `--config` is provided and the file does not exist, command execution fails.
 - Config export must be a default object. Supported keys:
   - `digest.allowedSources`
+  - `github.host` (optional GitHub host for `--server github`, example: `git.linecorp.com`)
   - `mcp.<serverName>` with local server config (`type`, `command`)
 
 ```ts
@@ -203,6 +213,9 @@ Project config override:
 export default {
   digest: {
     allowedSources: ["jira", "notion"],
+  },
+  github: {
+    host: "git.linecorp.com",
   },
   mcp: {
     slack: {
@@ -214,7 +227,10 @@ export default {
 ```
 
 - Effective allowed sources are `defaults + custom` (union, lowercase, deduped).
-- `import --server <name>` is case-sensitive and fails when the server is missing.
+- `import --server github` uses built-in GitHub import with local `gh` auth.
+- `github.host` is optional; when set, Proma runs `gh api --hostname <host> ...` for GitHub import calls.
+- `import --server mcp.<name>` resolves `<name>` from `config.mcp` and is case-sensitive.
+- Breaking change: legacy bare MCP names like `--server slack` are rejected; use `--server mcp.slack`.
 
 ## Logging
 

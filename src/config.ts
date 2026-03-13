@@ -15,6 +15,9 @@ export type ProjectConfig = {
   digest?: {
     allowedSources?: string[];
   };
+  github?: {
+    host?: string;
+  };
   mcp?: Record<string, McpLocalServerConfig>;
 };
 
@@ -128,6 +131,30 @@ function validateProjectConfig(
     normalized.mcp = servers;
   }
 
+  const github = raw.github;
+  if (typeof github !== "undefined") {
+    if (!isObject(github) || Array.isArray(github)) {
+      throw new Error(
+        `Invalid project config at ${configPath}: github must be an object`,
+      );
+    }
+
+    const hostRaw = github.host;
+    if (typeof hostRaw !== "undefined") {
+      if (typeof hostRaw !== "string" || hostRaw.trim().length === 0) {
+        throw new Error(
+          `Invalid project config at ${configPath}: github.host must be a non-empty string`,
+        );
+      }
+
+      normalized.github = {
+        host: hostRaw.trim(),
+      };
+    } else {
+      normalized.github = {};
+    }
+  }
+
   return normalized;
 }
 
@@ -153,7 +180,25 @@ async function loadConfigModule(configPath: string): Promise<ProjectConfig> {
 
 export async function loadProjectConfig(
   projectRoot: string,
+  options: {
+    configPath?: string;
+    required?: boolean;
+  } = {},
 ): Promise<ProjectConfig> {
+  if (options.configPath) {
+    const configPath = path.resolve(options.configPath);
+    const exists = await Bun.file(configPath).exists();
+    if (!exists) {
+      if (options.required) {
+        throw new Error(`Config file not found: ${configPath}`);
+      }
+
+      return {};
+    }
+
+    return loadConfigModule(configPath);
+  }
+
   for (const fileName of CONFIG_FILE_NAMES) {
     const configPath = path.join(projectRoot, fileName);
     if (!(await Bun.file(configPath).exists())) {
@@ -201,4 +246,13 @@ export function resolveMcpServer(
   }
 
   return server;
+}
+
+export function resolveGithubHost(config: ProjectConfig): string | undefined {
+  const host = config.github?.host?.trim();
+  if (!host) {
+    return undefined;
+  }
+
+  return host;
 }
