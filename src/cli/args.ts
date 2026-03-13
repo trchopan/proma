@@ -204,6 +204,18 @@ export function parseImportCommandArgs(args: string[]): ImportArgs {
     throw new Error("Missing required argument: --server");
   }
 
+  if (server === "mcp.") {
+    throw new Error(
+      "Invalid --server value: mcp. (missing MCP server name; use mcp.<server_name>)",
+    );
+  }
+
+  if (server !== "github" && !server.startsWith("mcp.")) {
+    throw new Error(
+      `Invalid --server value: ${server} (expected 'github' or 'mcp.<server_name>')`,
+    );
+  }
+
   if (listActions === Boolean(tool)) {
     throw new Error(
       "Import mode requires exactly one of: --list-actions or --tool <name>",

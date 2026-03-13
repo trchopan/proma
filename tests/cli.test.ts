@@ -189,13 +189,13 @@ test("parseImportCommandArgs parses action-list mode", () => {
     "--project",
     "apollo",
     "--server",
-    "slack",
+    "mcp.slack",
     "--list-actions",
   ]);
 
   expect(parsed).toEqual({
     project: "apollo",
-    server: "slack",
+    server: "mcp.slack",
     listActions: true,
     tool: undefined,
     args: {},
@@ -210,7 +210,7 @@ test("parseImportCommandArgs parses tool-call mode with args and output", () => 
     "--project",
     "apollo",
     "--server",
-    "slack",
+    "mcp.slack",
     "--tool",
     "fetch_thread",
     "--args",
@@ -221,7 +221,7 @@ test("parseImportCommandArgs parses tool-call mode with args and output", () => 
 
   expect(parsed).toEqual({
     project: "apollo",
-    server: "slack",
+    server: "mcp.slack",
     listActions: false,
     tool: "fetch_thread",
     args: {
@@ -240,7 +240,7 @@ test("parseImportCommandArgs enforces exclusive mode selection", () => {
       "--project",
       "apollo",
       "--server",
-      "slack",
+      "mcp.slack",
       "--list-actions",
       "--tool",
       "fetch_thread",
@@ -248,7 +248,7 @@ test("parseImportCommandArgs enforces exclusive mode selection", () => {
   ).toThrow("exactly one of");
 
   expect(() =>
-    parseImportCommandArgs(["--project", "apollo", "--server", "slack"]),
+    parseImportCommandArgs(["--project", "apollo", "--server", "mcp.slack"]),
   ).toThrow("exactly one of");
 });
 
@@ -258,12 +258,58 @@ test("parseImportCommandArgs rejects --args without --tool", () => {
       "--project",
       "apollo",
       "--server",
-      "slack",
+      "mcp.slack",
       "--list-actions",
       "--args",
       "{}",
     ]),
   ).toThrow("--args can only be used with --tool");
+});
+
+test("parseImportCommandArgs accepts github server target", () => {
+  const parsed = parseImportCommandArgs([
+    "--project",
+    "apollo",
+    "--server",
+    "github",
+    "--list-actions",
+  ]);
+
+  expect(parsed.server).toBe("github");
+});
+
+test("parseImportCommandArgs rejects legacy bare server names", () => {
+  expect(() =>
+    parseImportCommandArgs([
+      "--project",
+      "apollo",
+      "--server",
+      "slack",
+      "--list-actions",
+    ]),
+  ).toThrow("expected 'github' or 'mcp.<server_name>'");
+});
+
+test("runCli import rejects legacy bare server names", async () => {
+  const errors: string[] = [];
+
+  const exitCode = await runCli(
+    ["import", "--project", "apollo", "--server", "slack", "--list-actions"],
+    {},
+    {
+      out: () => {
+        return;
+      },
+      err: (message) => {
+        errors.push(message);
+      },
+    },
+  );
+
+  expect(exitCode).toBe(1);
+  expect(errors.join("\n")).toContain(
+    "expected 'github' or 'mcp.<server_name>'",
+  );
 });
 
 test("runCli returns readable error for missing args", async () => {
@@ -284,6 +330,52 @@ test("runCli returns readable error for missing args", async () => {
 
   expect(exitCode).toBe(1);
   expect(errors.join("\n")).toContain("Missing required argument: --input");
+});
+
+test("runCli returns readable error for missing --config value", async () => {
+  const errors: string[] = [];
+
+  const exitCode = await runCli(
+    ["digest", "--config"],
+    {},
+    {
+      out: () => {
+        return;
+      },
+      err: (message) => {
+        errors.push(message);
+      },
+    },
+  );
+
+  expect(exitCode).toBe(1);
+  expect(errors.join("\n")).toContain("Missing value for --config");
+});
+
+test("runCli returns readable error for duplicate --config", async () => {
+  const errors: string[] = [];
+
+  const exitCode = await runCli(
+    [
+      "digest",
+      "--config",
+      "./proma.config.ts",
+      "--config",
+      "./another.config.ts",
+    ],
+    {},
+    {
+      out: () => {
+        return;
+      },
+      err: (message) => {
+        errors.push(message);
+      },
+    },
+  );
+
+  expect(exitCode).toBe(1);
+  expect(errors.join("\n")).toContain("Duplicate argument: --config");
 });
 
 test("runCli returns readable error for missing project arg", async () => {
@@ -796,7 +888,14 @@ test("runCli import lists actions", async () => {
   const output: string[] = [];
 
   const exitCode = await runCli(
-    ["import", "--project", "apollo", "--server", "slack", "--list-actions"],
+    [
+      "import",
+      "--project",
+      "apollo",
+      "--server",
+      "mcp.slack",
+      "--list-actions",
+    ],
     {
       loadProjectConfig: async () => ({
         mcp: {
@@ -825,7 +924,7 @@ test("runCli import lists actions", async () => {
   );
 
   expect(exitCode).toBe(0);
-  expect(output).toContain("Listing actions for MCP server: slack");
+  expect(output).toContain("Listing actions for server: mcp.slack");
   expect(output).toContain("- fetch_thread: Fetch Slack thread as markdown");
 });
 
@@ -838,7 +937,7 @@ test("runCli import tool call writes markdown output", async () => {
       "--project",
       "apollo",
       "--server",
-      "slack",
+      "mcp.slack",
       "--tool",
       "fetch_thread",
       "--args",
@@ -875,7 +974,7 @@ test("runCli import tool call writes markdown output", async () => {
 
   expect(exitCode).toBe(0);
   expect(output).toContain(
-    "Calling MCP tool 'fetch_thread' on server 'slack'...",
+    "Calling MCP tool 'fetch_thread' on server 'mcp.slack'...",
   );
   expect(output).toContain(
     "Wrote imported markdown: /tmp/apollo/imports/slack.md",
@@ -891,7 +990,7 @@ test("runCli import dry-run avoids MCP calls and writes", async () => {
       "--project",
       "apollo",
       "--server",
-      "slack",
+      "mcp.slack",
       "--tool",
       "fetch_thread",
       "--dry-run",
@@ -933,7 +1032,14 @@ test("runCli import loads config from current working directory", async () => {
   let capturedConfigRoot = "";
 
   const exitCode = await runCli(
-    ["import", "--project", "tmp/acme", "--server", "slack", "--list-actions"],
+    [
+      "import",
+      "--project",
+      "tmp/acme",
+      "--server",
+      "mcp.slack",
+      "--list-actions",
+    ],
     {
       loadProjectConfig: async (projectRoot) => {
         capturedConfigRoot = projectRoot;
@@ -960,6 +1066,190 @@ test("runCli import loads config from current working directory", async () => {
 
   expect(exitCode).toBe(0);
   expect(capturedConfigRoot).toBe(path.resolve(process.cwd()));
+});
+
+test("runCli import github lists actions without MCP config", async () => {
+  const output: string[] = [];
+
+  const exitCode = await runCli(
+    ["import", "--project", "apollo", "--server", "github", "--list-actions"],
+    {
+      loadProjectConfig: async () => ({}),
+      listGithubTools: () => [
+        {
+          name: "pr_get",
+          description: "Get one pull request",
+        },
+      ],
+      renderActionList: () => "- pr_get: Get one pull request",
+    },
+    {
+      out: (message) => {
+        output.push(message);
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(output).toContain("Listing actions for server: github");
+  expect(output).toContain("- pr_get: Get one pull request");
+});
+
+test("runCli uses default config path when --config is omitted", async () => {
+  let capturedOptions:
+    | {
+        configPath?: string;
+        required?: boolean;
+      }
+    | undefined;
+
+  const exitCode = await runCli(
+    ["report", "--project", "apollo", "--dry-run"],
+    {
+      loadProjectConfig: async (_projectRoot, options) => {
+        capturedOptions = options;
+        return {};
+      },
+      resolveReportInputFiles: async () => [],
+      resolveBaseReportFiles: async () => [],
+      loadReportContext: async () => ({
+        period: "weekly",
+        inputs: [],
+        baseReports: [],
+      }),
+      generateReport: async () => ({
+        title: "Weekly Report",
+        executiveSummary: "Summary",
+        updatedInformation: [],
+        resolutions: [],
+        nextSteps: [],
+      }),
+    },
+    {
+      out: () => {
+        return;
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(capturedOptions).toEqual({
+    configPath: path.resolve(process.cwd(), "proma.config.ts"),
+    required: false,
+  });
+});
+
+test("runCli passes explicit --config path and requires file", async () => {
+  let capturedOptions:
+    | {
+        configPath?: string;
+        required?: boolean;
+      }
+    | undefined;
+
+  const exitCode = await runCli(
+    [
+      "report",
+      "--project",
+      "apollo",
+      "--config",
+      "./configs/proma.custom.ts",
+      "--dry-run",
+    ],
+    {
+      loadProjectConfig: async (_projectRoot, options) => {
+        capturedOptions = options;
+        return {};
+      },
+      resolveReportInputFiles: async () => [],
+      resolveBaseReportFiles: async () => [],
+      loadReportContext: async () => ({
+        period: "weekly",
+        inputs: [],
+        baseReports: [],
+      }),
+      generateReport: async () => ({
+        title: "Weekly Report",
+        executiveSummary: "Summary",
+        updatedInformation: [],
+        resolutions: [],
+        nextSteps: [],
+      }),
+    },
+    {
+      out: () => {
+        return;
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(capturedOptions).toEqual({
+    configPath: path.resolve(process.cwd(), "./configs/proma.custom.ts"),
+    required: true,
+  });
+});
+
+test("runCli import github tool call writes markdown output", async () => {
+  const output: string[] = [];
+  let capturedHost: string | undefined;
+
+  const exitCode = await runCli(
+    [
+      "import",
+      "--project",
+      "apollo",
+      "--server",
+      "github",
+      "--tool",
+      "pr_get",
+      "--args",
+      '{"owner":"acme","repo":"platform","number":42}',
+    ],
+    {
+      loadProjectConfig: async () => ({
+        github: {
+          host: "git.example.com",
+        },
+      }),
+      resolveImportOutputPath: async () => "/tmp/apollo/imports/github-pr.md",
+      callGithubTool: async ({ host }) => {
+        capturedHost = host;
+        return {
+          result: { title: "Improve import" },
+        };
+      },
+      renderImportedMarkdown: () => "# Imported",
+      writeImportedMarkdown: async () => ({
+        absolutePath: "/tmp/apollo/imports/github-pr.md",
+        relativePath: "imports/github-pr.md",
+      }),
+    },
+    {
+      out: (message) => {
+        output.push(message);
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(output).toContain("Calling MCP tool 'pr_get' on server 'github'...");
+  expect(output).toContain(
+    "Wrote imported markdown: /tmp/apollo/imports/github-pr.md",
+  );
+  expect(capturedHost).toBe("git.example.com");
 });
 
 test("renderDiffPreview renders unified hunks and change counts", () => {

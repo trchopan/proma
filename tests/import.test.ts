@@ -2,7 +2,11 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-
+import {
+  buildGhApiCommandArgs,
+  callGithubTool,
+  listGithubTools,
+} from "$/import/github-client";
 import { renderActionList, renderImportedMarkdown } from "$/import/transform";
 import {
   resolveImportOutputPath,
@@ -66,7 +70,6 @@ test("renderImportedMarkdown prefers text content when available", () => {
     generatedAt: new Date("2026-03-12T10:00:00.000Z"),
   });
 
-  expect(markdown).toContain("source: mcp");
   expect(markdown).toContain("server: slack");
   expect(markdown).toContain("tool: fetch_thread");
   expect(markdown).toContain("imported_at: 2026-03-12T10:00:00.000Z");
@@ -121,4 +124,79 @@ test("writeImportedMarkdown writes to explicit output path", async () => {
   expect(written.absolutePath).toBe(output);
   expect(written.relativePath).toBe(path.join("custom", "thread.md"));
   expect(await Bun.file(output).text()).toBe("# Imported");
+});
+
+test("listGithubTools exposes issue and pull request actions", () => {
+  const tools = listGithubTools();
+
+  expect(tools.map((tool) => tool.name)).toEqual(
+    expect.arrayContaining([
+      "issue_get",
+      "issues_list",
+      "pr_get",
+      "prs_list",
+      "issue_comments",
+    ]),
+  );
+});
+
+test("callGithubTool rejects unknown tool names", async () => {
+  await expect(
+    callGithubTool({
+      tool: "unknown_tool",
+      args: {},
+    }),
+  ).rejects.toThrow("Unknown GitHub import tool");
+});
+
+test("callGithubTool validates required args before running gh", async () => {
+  await expect(
+    callGithubTool({
+      tool: "pr_get",
+      args: {
+        owner: "acme",
+        repo: "platform",
+      },
+    }),
+  ).rejects.toThrow("'number' must be a positive integer");
+});
+
+test("buildGhApiCommandArgs always forces GET and supports host", () => {
+  const args = buildGhApiCommandArgs({
+    endpoint: "/repos/LINE-FE/sample-portal-fe/pulls",
+    host: "git.example.com",
+    query: {
+      state: "all",
+      per_page: "10",
+      page: "1",
+    },
+  });
+
+  expect(args).toEqual([
+    "api",
+    "/repos/LINE-FE/sample-portal-fe/pulls",
+    "--method",
+    "GET",
+    "--hostname",
+    "git.example.com",
+    "-f",
+    "state=all",
+    "-f",
+    "per_page=10",
+    "-f",
+    "page=1",
+  ]);
+});
+
+test("callGithubTool validates state enum for list tools", async () => {
+  await expect(
+    callGithubTool({
+      tool: "prs_list",
+      args: {
+        owner: "LINE-FE",
+        repo: "sample-portal-fe",
+        state: "invalid",
+      },
+    }),
+  ).rejects.toThrow("'state' must be one of: open, closed, all");
 });

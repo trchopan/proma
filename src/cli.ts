@@ -20,6 +20,7 @@ import { loadInputImages } from "./cli/image-loader";
 import {
   loadProjectConfig,
   resolveDigestAllowedSources,
+  resolveGithubHost,
   resolveMcpServer,
 } from "./config";
 import {
@@ -49,6 +50,7 @@ import {
   writePreparedTopicMerge,
   writeReportFile,
 } from "./files";
+import { callGithubTool, listGithubTools } from "./import/github-client";
 import { callMcpTool, listMcpTools, type McpTool } from "./import/mcp-client";
 import { renderActionList, renderImportedMarkdown } from "./import/transform";
 import { createLogger, type Logger } from "./logging";
@@ -69,6 +71,7 @@ export {
 type CliDependencies = {
   loadProjectConfig: typeof loadProjectConfig;
   resolveDigestAllowedSources: typeof resolveDigestAllowedSources;
+  resolveGithubHost: typeof resolveGithubHost;
   resolveMcpServer: typeof resolveMcpServer;
   generateDigestItems: typeof generateDigestItems;
   generateTopicTarget: typeof generateTopicTarget;
@@ -83,6 +86,8 @@ type CliDependencies = {
   prepareTopicMerge: typeof prepareTopicMerge;
   writePreparedTopicMerge: typeof writePreparedTopicMerge;
   resolveImportOutputPath: typeof resolveImportOutputPath;
+  listGithubTools: typeof listGithubTools;
+  callGithubTool: typeof callGithubTool;
   listMcpTools: typeof listMcpTools;
   callMcpTool: typeof callMcpTool;
   renderActionList: typeof renderActionList;
@@ -116,11 +121,95 @@ function defaultReadTextFile(filePath: string): Promise<string> {
 function usage(): string {
   return [
     "Usage:",
-    "  proma digest --input <file> --project <output-root> [--model <model>] [--verbose] [--dry-run]",
-    "  proma merge --project <output-root> [--model <model>] [--verbose] [--dry-run] [--auto-merge]",
-    "  proma import --project <output-root> --server <name> (--list-actions | --tool <name> [--args <json>] [--output <file>]) [--verbose] [--dry-run]",
-    "  proma report --project <output-root> [--period <daily|weekly|bi-weekly|monthly>] [--input <file> ...] [--base <file> ...] [--model <model>] [--verbose] [--dry-run]",
+    "  proma digest --input <file> --project <output-root> [--model <model>] [--config <file>] [--verbose] [--dry-run]",
+    "  proma merge --project <output-root> [--model <model>] [--config <file>] [--verbose] [--dry-run] [--auto-merge]",
+    "  proma import --project <output-root> --server <github|mcp.<name>> (--list-actions | --tool <name> [--args <json>] [--output <file>]) [--config <file>] [--verbose] [--dry-run]",
+    "  proma report --project <output-root> [--period <daily|weekly|bi-weekly|monthly>] [--input <file> ...] [--base <file> ...] [--model <model>] [--config <file>] [--verbose] [--dry-run]",
   ].join("\n");
+}
+
+function parseGlobalCliOptions(argv: string[]): {
+  args: string[];
+  verbose: boolean;
+  dryRun: boolean;
+  configPath: string;
+  explicitConfigPath: boolean;
+} {
+  const args: string[] = [];
+  let verbose = false;
+  let dryRun = false;
+  let rawConfigPath: string | undefined;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index] ?? "";
+    if (arg === "--verbose") {
+      verbose = true;
+      continue;
+    }
+
+    if (arg === "--dry-run") {
+      dryRun = true;
+      continue;
+    }
+
+    if (arg === "--config") {
+      if (typeof rawConfigPath !== "undefined") {
+        throw new Error("Duplicate argument: --config");
+      }
+
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--")) {
+        throw new Error("Missing value for --config");
+      }
+
+      rawConfigPath = value;
+      index += 1;
+      continue;
+    }
+
+    args.push(arg);
+  }
+
+  return {
+    args,
+    verbose,
+    dryRun,
+    configPath: path.resolve(process.cwd(), rawConfigPath ?? "proma.config.ts"),
+    explicitConfigPath: typeof rawConfigPath !== "undefined",
+  };
+}
+
+type ImportServerTarget =
+  | {
+      kind: "github";
+    }
+  | {
+      kind: "mcp";
+      name: string;
+    };
+
+function resolveImportServerTarget(server: string): ImportServerTarget {
+  if (server === "github") {
+    return { kind: "github" };
+  }
+
+  if (server.startsWith("mcp.")) {
+    const name = server.slice("mcp.".length).trim();
+    if (!name) {
+      throw new Error(
+        "Invalid --server value: mcp. (missing MCP server name; use mcp.<server_name>)",
+      );
+    }
+
+    return {
+      kind: "mcp",
+      name,
+    };
+  }
+
+  throw new Error(
+    `Invalid --server value: ${server} (expected 'github' or 'mcp.<server_name>')`,
+  );
 }
 
 async function defaultConfirmMerge(
@@ -565,33 +654,44 @@ async function runReportCommand(
 
 async function runImportCommand(
   parsed: ImportArgs,
+  projectConfig: Awaited<ReturnType<typeof loadProjectConfig>>,
   deps: CliDependencies,
   logger: Logger,
 ): Promise<number> {
   const projectRoot = path.resolve(parsed.project);
-  const configRoot = path.resolve(process.cwd());
-  const projectConfig = await deps.loadProjectConfig(configRoot);
-  const server = deps.resolveMcpServer(projectConfig, parsed.server);
+  const target = resolveImportServerTarget(parsed.server);
+  let mcpCommand: string[] | undefined;
+  let githubHost: string | undefined;
+
+  if (target.kind === "mcp") {
+    const server = deps.resolveMcpServer(projectConfig, target.name);
+    mcpCommand = server.command;
+  } else if (!parsed.listActions) {
+    githubHost = deps.resolveGithubHost(projectConfig);
+  }
 
   if (parsed.listActions) {
     await logger.progress(
       "import.list_actions.start",
-      `Listing actions for MCP server: ${parsed.server}`,
+      `Listing actions for server: ${parsed.server}`,
     );
 
     if (parsed.dryRun) {
       await logger.progress(
         "import.list_actions.dry_run",
-        `Dry run: would connect to MCP server '${parsed.server}' and list actions.`,
+        `Dry run: would list actions for server '${parsed.server}'.`,
       );
       return 0;
     }
 
-    const tools: McpTool[] = await deps.listMcpTools({
-      server: {
-        command: server.command,
-      },
-    });
+    const tools: McpTool[] =
+      target.kind === "github"
+        ? deps.listGithubTools()
+        : await deps.listMcpTools({
+            server: {
+              command: mcpCommand ?? [],
+            },
+          });
     const rendered = deps.renderActionList({
       tools,
       server: parsed.server,
@@ -626,13 +726,20 @@ async function runImportCommand(
     return 0;
   }
 
-  const result = await deps.callMcpTool({
-    server: {
-      command: server.command,
-    },
-    tool,
-    args: parsed.args,
-  });
+  const result =
+    target.kind === "github"
+      ? await deps.callGithubTool({
+          tool,
+          args: parsed.args,
+          host: githubHost,
+        })
+      : await deps.callMcpTool({
+          server: {
+            command: mcpCommand ?? [],
+          },
+          tool,
+          args: parsed.args,
+        });
 
   const markdown = deps.renderImportedMarkdown({
     server: parsed.server,
@@ -664,6 +771,7 @@ export async function runCli(
   const deps: CliDependencies = {
     loadProjectConfig,
     resolveDigestAllowedSources,
+    resolveGithubHost,
     resolveMcpServer,
     generateDigestItems,
     generateTopicTarget,
@@ -678,6 +786,8 @@ export async function runCli(
     prepareTopicMerge,
     writePreparedTopicMerge,
     resolveImportOutputPath,
+    listGithubTools,
+    callGithubTool,
     listMcpTools,
     callMcpTool,
     renderActionList,
@@ -700,14 +810,29 @@ export async function runCli(
     ...io,
   };
 
-  const hasGlobalVerbose = argv.includes("--verbose");
-  const hasGlobalDryRun = argv.includes("--dry-run");
-  const normalizedArgv = hasGlobalVerbose
-    ? argv.filter((arg) => arg !== "--verbose")
-    : argv;
-  const normalizedArgvWithoutGlobalFlags = hasGlobalDryRun
-    ? normalizedArgv.filter((arg) => arg !== "--dry-run")
-    : normalizedArgv;
+  let globalOptions:
+    | {
+        args: string[];
+        verbose: boolean;
+        dryRun: boolean;
+        configPath: string;
+        explicitConfigPath: boolean;
+      }
+    | undefined;
+
+  try {
+    globalOptions = parseGlobalCliOptions(argv);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown argument parsing error";
+    terminal.err(`Error: ${message}`);
+    terminal.err(usage());
+    return 1;
+  }
+
+  const normalizedArgvWithoutGlobalFlags = globalOptions.args;
+  const hasGlobalVerbose = globalOptions.verbose;
+  const hasGlobalDryRun = globalOptions.dryRun;
 
   const command = normalizedArgvWithoutGlobalFlags[0];
   if (
@@ -740,14 +865,19 @@ export async function runCli(
   }
 
   try {
+    const projectConfig = await deps.loadProjectConfig(
+      path.resolve(process.cwd()),
+      {
+        configPath: globalOptions.configPath,
+        required: globalOptions.explicitConfigPath,
+      },
+    );
+
     if (command === "digest") {
       const parsed = {
         ...parseDigestCommandArgs(normalizedArgvWithoutGlobalFlags.slice(1)),
         dryRun: hasGlobalDryRun,
       };
-      const projectConfig = await deps.loadProjectConfig(
-        path.resolve(process.cwd()),
-      );
       const allowedSources = deps.resolveDigestAllowedSources(projectConfig);
       const promptRegistry = createBuiltInPromptRegistry({
         allowedSources,
@@ -771,9 +901,6 @@ export async function runCli(
         ...parseReportCommandArgs(normalizedArgvWithoutGlobalFlags.slice(1)),
         dryRun: hasGlobalDryRun,
       };
-      const projectConfig = await deps.loadProjectConfig(
-        path.resolve(process.cwd()),
-      );
       const allowedSources = deps.resolveDigestAllowedSources(projectConfig);
       const promptRegistry = createBuiltInPromptRegistry({
         allowedSources,
@@ -798,7 +925,12 @@ export async function runCli(
         verbose: hasGlobalVerbose,
       };
 
-      const exitCode = await runImportCommand(parsed, deps, logger);
+      const exitCode = await runImportCommand(
+        parsed,
+        projectConfig,
+        deps,
+        logger,
+      );
       await logger.debug("cli.complete", "Command completed successfully", {
         command,
       });
@@ -809,9 +941,6 @@ export async function runCli(
       ...parseMergeCommandArgs(normalizedArgvWithoutGlobalFlags.slice(1)),
       dryRun: hasGlobalDryRun,
     };
-    const projectConfig = await deps.loadProjectConfig(
-      path.resolve(process.cwd()),
-    );
     const allowedSources = deps.resolveDigestAllowedSources(projectConfig);
     const promptRegistry = createBuiltInPromptRegistry({
       allowedSources,
