@@ -7,4 +7,4 @@ export {
   runCli,
 } from "$/cli";
 
-export type { ProjectConfig } from "$/config";
+export type { ProjectConfig } from "$/core/config";

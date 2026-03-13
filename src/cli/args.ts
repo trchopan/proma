@@ -1,5 +1,5 @@
-import { DEFAULT_MODEL } from "../config";
-import { REPORT_PERIODS, type ReportPeriod } from "../report";
+import { DEFAULT_MODEL } from "$/core/config";
+import { REPORT_PERIODS, type ReportPeriod } from "$/domain/report/report";
 
 type ParsedOptions = {
   values: Map<string, string[]>;

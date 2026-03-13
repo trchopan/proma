@@ -5,18 +5,12 @@ export {
   markDigestItemMerged,
   type WriteDigestItemsOptions,
   writeDigestItems,
-} from "./storage/digest-notes";
+} from "$/storage/digest/digest-notes";
 export {
   type ImportedFile,
   resolveImportOutputPath,
   writeImportedMarkdown,
-} from "./storage/import-files";
-export {
-  loadReportContext,
-  resolveBaseReportFiles,
-  resolveReportInputFiles,
-  writeReportFile,
-} from "./storage/report-files";
+} from "$/storage/import/import-files";
 export {
   collectCategoryTagPool,
   listTopicCandidates,
@@ -27,4 +21,10 @@ export {
   slugifyTopic,
   type TopicCandidate,
   writePreparedTopicMerge,
-} from "./storage/topic-files";
+} from "$/storage/merge/topic-files";
+export {
+  loadReportContext,
+  resolveBaseReportFiles,
+  resolveReportInputFiles,
+  writeReportFile,
+} from "$/storage/report/report-files";

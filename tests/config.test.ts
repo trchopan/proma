@@ -8,7 +8,7 @@ import {
   resolveDigestAllowedSources,
   resolveGithubHost,
   resolveMcpServer,
-} from "$/config";
+} from "$/core/config";
 
 test("resolveDigestAllowedSources returns defaults when config is missing", () => {
   const allowedSources = resolveDigestAllowedSources({});
