@@ -17,10 +17,11 @@ This release must:
 
 1. Determine the current SemVer version.
 2. Increment the MINOR version (reset PATCH to 0).
-3. Create a consolidated frozen release record.
-4. Delete completed ticket files from `docs/tickets/` (keep `TEMPLATE.md`).
-5. Open a PR from `develop` to `main`.
-6. Tag the merge commit after PR approval.
+3. Update `package.json` `version` to match the computed release version.
+4. Create a consolidated frozen release record.
+5. Delete completed ticket files from `docs/tickets/` (keep `TEMPLATE.md`).
+6. Open a PR from `develop` to `main`.
+7. Tag the merge commit after PR approval.
 
 Do NOT modify:
 
@@ -48,6 +49,13 @@ v0.1.0 → v0.2.0
 Let:
 <new_version> = v<MAJOR>.<MINOR+1>.0
 
+Set `package.json` version to the same SemVer without the `v` prefix.
+
+Example:
+
+- `<new_version>` = `v1.5.0`
+- `package.json` `version` = `1.5.0`
+
 All branching and tagging must use this version.
 
 ---
@@ -60,6 +68,9 @@ release/<new_version>
 
 Allowed changes are limited to what GIT_WORKFLOW.md permits
 during release preparation.
+
+This includes updating `package.json` version to match `<new_version>`
+without the `v` prefix.
 
 No feature or bugfix work is allowed.
 
@@ -150,5 +161,6 @@ Provide:
 1. Determined current version and computed <new_version>
 2. Full contents of docs/releases/<new_version>.md
 3. List of deleted tickets files
-4. Exact git command sequence executed according to GIT_WORKFLOW.md
-5. PR title and body text
+4. Confirmation of `package.json` version change (`old` -> `new`)
+5. Exact git command sequence executed according to GIT_WORKFLOW.md
+6. PR title and body text
