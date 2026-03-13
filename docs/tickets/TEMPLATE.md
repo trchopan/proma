@@ -5,7 +5,7 @@ type: general
 area: ui
 surface: ''
 priority: P0|P1|P2 (lower is higher priority)
-status: pending
+status: done
 branch: ''
 base_branch: develop
 updated_at: ''
