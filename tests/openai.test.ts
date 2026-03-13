@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "bun:test";
 import {
   type ChatResponseFormat,
   createChatCompletion,
-} from "../src/ai/openai";
+} from "$/integrations/ai/openai";
 
 const originalFetch = globalThis.fetch;
 const originalApiKey = process.env.OPENAI_API_KEY;
@@ -208,4 +208,42 @@ test("createChatCompletion logs full prompt and response in verbose mode", async
 
   expect(startEvent?.meta?.prompt).toBe("user: full prompt body");
   expect(successEvent?.meta?.response).toBe("full response body");
+});
+
+test("createChatCompletion dry-run does not send request and prints payload", async () => {
+  const logs: string[] = [];
+  const originalConsoleLog = console.log;
+  console.log = (message?: unknown) => {
+    logs.push(String(message));
+  };
+
+  globalThis.fetch = (async () => {
+    throw new Error("fetch should not be called in dry-run");
+  }) as unknown as typeof fetch;
+
+  try {
+    await expect(
+      createChatCompletion({
+        model: "gpt-4o-mini",
+        dryRun: true,
+        messages: [{ role: "user", content: "Hello" }],
+        responseFormat: {
+          type: "json_schema",
+          json_schema: {
+            name: "dry_run_response",
+            strict: true,
+            schema: { type: "object" },
+          },
+        },
+      }),
+    ).rejects.toThrow("Dry run: request not sent");
+  } finally {
+    console.log = originalConsoleLog;
+  }
+
+  expect(logs[0]).toBe("[dry-run] AI request preview:");
+  expect(logs[1]).toContain('"endpoint"');
+  expect(logs[1]).toContain('"Authorization": "Bearer ***"');
+  expect(logs[1]).toContain('"model": "gpt-4o-mini"');
+  expect(logs[1]).toContain('"response_format"');
 });

@@ -1,9 +1,10 @@
-import { resolveOpenAiChatCompletionsUrl } from "../config";
+import { resolveOpenAiChatCompletionsUrl } from "$/core/config";
 import {
+  DryRunAbortError,
   MissingEnvError,
   ModelRefusalError,
   UnsupportedModelError,
-} from "../errors";
+} from "$/core/errors";
 
 export type ChatMessage = {
   role: "system" | "user" | "assistant";
@@ -27,6 +28,7 @@ export type ChatCompletionOptions = {
   messages: ChatMessage[];
   temperature?: number;
   responseFormat?: ChatResponseFormat;
+  dryRun?: boolean;
   logger?: {
     verbose: boolean;
     debug: (
@@ -51,13 +53,7 @@ type JsonSchemaResponseFormat = {
   };
 };
 
-type JsonObjectResponseFormat = {
-  type: "json_object";
-};
-
-export type ChatResponseFormat =
-  | JsonSchemaResponseFormat
-  | JsonObjectResponseFormat;
+export type ChatResponseFormat = JsonSchemaResponseFormat;
 
 type OpenAiChoice = {
   message?: {
@@ -98,13 +94,40 @@ function formatMessageContentForLogging(
 export async function createChatCompletion(
   options: ChatCompletionOptions,
 ): Promise<string> {
+  const endpoint = resolveOpenAiChatCompletionsUrl();
+  const requestBody = {
+    model: options.model,
+    messages: options.messages,
+    temperature: options.temperature ?? 0.2,
+    response_format: options.responseFormat,
+    stream: false,
+  };
+
+  if (options.dryRun) {
+    console.log("[dry-run] AI request preview:");
+    console.log(
+      JSON.stringify(
+        {
+          endpoint,
+          headers: {
+            Authorization: "Bearer ***",
+            "Content-Type": "application/json",
+          },
+          body: requestBody,
+        },
+        null,
+        2,
+      ),
+    );
+    throw new DryRunAbortError();
+  }
+
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
     throw new MissingEnvError("OPENAI_API_KEY");
   }
 
-  const endpoint = resolveOpenAiChatCompletionsUrl();
   const startedAt = Date.now();
   await options.logger?.debug(
     "ai.request.start",
@@ -132,11 +155,7 @@ export async function createChatCompletion(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: options.model,
-      messages: options.messages,
-      temperature: options.temperature ?? 0.2,
-      response_format: options.responseFormat,
-      stream: false,
+      ...requestBody,
     }),
   });
 

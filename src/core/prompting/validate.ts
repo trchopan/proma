@@ -1,6 +1,11 @@
-import type { ProcessingKind, PromptRegistry } from "./types";
+import type { ProcessingKind, PromptRegistry } from "$/core/prompting/types";
 
-const REQUIRED_KINDS: ProcessingKind[] = ["digest", "merge", "report"];
+const REQUIRED_KINDS: ProcessingKind[] = [
+  "digest",
+  "merge",
+  "merge_content",
+  "report",
+];
 
 function sampleContext(kind: ProcessingKind): unknown {
   if (kind === "digest") {
@@ -25,6 +30,33 @@ function sampleContext(kind: ProcessingKind): unknown {
     };
   }
 
+  if (kind === "merge_content") {
+    return {
+      category: "planning",
+      topic: "Release Cadence Policy",
+      tags: ["release-cadence"],
+      existing: {
+        summary: "Current policy summary",
+        objectivesSuccessCriteria: [],
+        scope: [],
+        deliverables: [],
+        plan: [],
+        timeline: [],
+        teamsIndividualsInvolved: [],
+        references: [],
+      },
+      incoming: {
+        category: "planning",
+        source: "slack",
+        summary: "Incoming summary",
+        keyPoints: [],
+        timeline: [],
+        references: [],
+      },
+      tagPool: [],
+    };
+  }
+
   return {
     period: "weekly",
     inputs: [],
@@ -33,12 +65,11 @@ function sampleContext(kind: ProcessingKind): unknown {
 }
 
 /**
- * Validates that a composed prompt registry satisfies required runtime
+ * Validates that a prompt registry satisfies required runtime
  * contracts before CLI command execution.
  *
  * This enforces that all required operations exist and that each operation
- * still returns Structured Outputs (`json_schema`) after plugin patches or
- * overrides.
+ * returns Structured Outputs (`json_schema`).
  *
  * Throws a descriptive `Error` when any contract check fails.
  */

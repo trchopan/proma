@@ -28,3 +28,9 @@ export class ModelRefusalError extends AppError {
     super(`Model refused structured output: ${reason.trim()}`, "MODEL_REFUSAL");
   }
 }
+
+export class DryRunAbortError extends AppError {
+  constructor() {
+    super("Dry run: request not sent", "DRY_RUN_ABORT");
+  }
+}

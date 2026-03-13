@@ -1,7 +1,7 @@
-import type { ChatCompletionOptions } from "./ai/openai";
-import type { Logger } from "./logging";
-import { executePromptOperation } from "./prompting/execute";
-import type { PromptRegistry } from "./prompting/types";
+import type { Logger } from "$/core/logging";
+import { executePromptOperation } from "$/core/prompting/execute";
+import type { PromptRegistry } from "$/core/prompting/types";
+import type { ChatCompletionOptions } from "$/integrations/ai/openai";
 
 export const REPORT_PERIODS = [
   "daily",
@@ -48,6 +48,7 @@ export type ReportGenerationOptions = {
   model: string;
   logger?: Logger;
   promptRegistry: PromptRegistry;
+  dryRun?: boolean;
 };
 
 export const REPORT_RESPONSE_SCHEMA = {
@@ -163,6 +164,7 @@ export async function generateReport(
     {
       model: options.model,
       logger: options.logger,
+      dryRun: options.dryRun,
       chatCompletion,
     },
   );

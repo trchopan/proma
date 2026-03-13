@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 
-import { parseDigestCommandArgs, parseMergeCommandArgs } from "../src/cli/args";
-import { renderDiffPreview } from "../src/cli/diff-preview";
+import { parseDigestCommandArgs, parseMergeCommandArgs } from "$/cli/args";
+import { renderDiffPreview } from "$/cli/diff-preview";
 
 test("cli args parser supports global defaults", () => {
   const digest = parseDigestCommandArgs([

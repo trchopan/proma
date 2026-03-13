@@ -1,4 +1,4 @@
-import type { DigestCategory, DigestSource } from "../digest";
+import type { DigestCategory, DigestSource } from "$/domain/digest/types";
 
 export type TopicFrontMatter = {
   category: DigestCategory;
@@ -6,13 +6,10 @@ export type TopicFrontMatter = {
   updated_at: string;
   tags: string[];
   sources: DigestSource[];
-  merged_digest_ids: string[];
+  digested_note_paths: string[];
 };
 
-export type ParsedTopicMetadata = Partial<TopicFrontMatter> & {
-  source_refs?: string[];
-  merged_ingest_ids?: string[];
-};
+export type ParsedTopicMetadata = Partial<TopicFrontMatter> & {};
 
 export type ParsedFrontMatter = {
   metadata: ParsedTopicMetadata;
@@ -91,9 +88,8 @@ export function parseFrontMatter(markdown: string): ParsedFrontMatter {
   const arrayKeys = new Set([
     "tags",
     "sources",
+    "digested_note_paths",
     "merged_digest_ids",
-    "merged_ingest_ids",
-    "source_refs",
   ]);
 
   for (let i = 0; i < lines.length; i += 1) {
@@ -116,11 +112,10 @@ export function parseFrontMatter(markdown: string): ParsedFrontMatter {
         if (key === "tags") metadata.tags = parsedInline;
         if (key === "sources")
           metadata.sources = parsedInline as DigestSource[];
+        if (key === "digested_note_paths")
+          metadata.digested_note_paths = parsedInline;
         if (key === "merged_digest_ids")
-          metadata.merged_digest_ids = parsedInline;
-        if (key === "merged_ingest_ids")
-          metadata.merged_ingest_ids = parsedInline;
-        if (key === "source_refs") metadata.source_refs = parsedInline;
+          metadata.digested_note_paths = parsedInline;
         continue;
       }
 
@@ -137,9 +132,8 @@ export function parseFrontMatter(markdown: string): ParsedFrontMatter {
 
       if (key === "tags") metadata.tags = values;
       if (key === "sources") metadata.sources = values as DigestSource[];
-      if (key === "merged_digest_ids") metadata.merged_digest_ids = values;
-      if (key === "merged_ingest_ids") metadata.merged_ingest_ids = values;
-      if (key === "source_refs") metadata.source_refs = values;
+      if (key === "digested_note_paths") metadata.digested_note_paths = values;
+      if (key === "merged_digest_ids") metadata.digested_note_paths = values;
       continue;
     }
 
@@ -166,8 +160,8 @@ export function serializeFrontMatter(metadata: TopicFrontMatter): string {
     ...metadata.tags.map((tag) => `  - ${yamlQuote(tag)}`),
     "sources:",
     ...metadata.sources.map((source) => `  - ${source}`),
-    "merged_digest_ids:",
-    ...metadata.merged_digest_ids.map((id) => `  - ${yamlQuote(id)}`),
+    "digested_note_paths:",
+    ...metadata.digested_note_paths.map((id) => `  - ${yamlQuote(id)}`),
     "---",
     "",
   ].join("\n");
