@@ -1,19 +1,26 @@
-import type { ChatCompletionOptions, ChatResponseFormat } from "../ai/openai";
 import type {
   DigestInputImage,
   DigestItem,
   DigestSource,
+  MergeContentInput,
+  MergeContentResult,
   TopicRoutingCandidate,
   TopicRoutingTarget,
-} from "../digest";
+} from "$/domain/digest/types";
+
 import type {
   BaseReportContext,
   ReportInputContext,
   ReportPeriod,
-} from "../report";
+} from "$/domain/report/report";
+
+import type {
+  ChatCompletionOptions,
+  ChatResponseFormat,
+} from "$/integrations/ai/openai";
 
 /** Supported prompt-processing operation keys. */
-export type ProcessingKind = "digest" | "merge" | "report";
+export type ProcessingKind = "digest" | "merge" | "merge_content" | "report";
 
 /** Runtime input required to build a `digest` prompt. */
 export type DigestOperationContext = {
@@ -28,6 +35,9 @@ export type MergeOperationContext = {
   candidates: TopicRoutingCandidate[];
 };
 
+/** Runtime input required to build a `merge_content` prompt. */
+export type MergeContentOperationContext = MergeContentInput;
+
 /** Runtime input required to build a `report` prompt. */
 export type ReportOperationContext = {
   period: ReportPeriod;
@@ -39,13 +49,15 @@ export type ReportOperationContext = {
 export type OperationContextMap = {
   digest: DigestOperationContext;
   merge: MergeOperationContext;
+  merge_content: MergeContentOperationContext;
   report: ReportOperationContext;
 };
 
 /** Maps operation kind to its parsed model output shape. */
 export type OperationOutputMap = {
   digest: DigestItem[];
-  merge: TopicRoutingTarget[];
+  merge: TopicRoutingTarget;
+  merge_content: MergeContentResult;
   report: {
     title: string;
     executiveSummary: string;
@@ -65,8 +77,8 @@ export type PromptBuildResult = {
 /**
  * Full definition for one prompt operation.
  *
- * Plugin overrides and patches must preserve this contract so validation can
- * confirm registry correctness before commands run.
+ * Validation uses this contract to confirm registry correctness before
+ * commands run.
  */
 export type OperationDefinition<K extends ProcessingKind> = {
   kind: K;
@@ -81,8 +93,7 @@ export type OperationDefinition<K extends ProcessingKind> = {
 /**
  * Registry of all required prompt operations.
  *
- * Every kind (`digest`, `merge`, `report`) must exist and remain valid after
- * plugin composition.
+ * Every kind (`digest`, `merge`, `report`) must exist and remain valid.
  */
 export type PromptRegistry = {
   [K in ProcessingKind]: OperationDefinition<K>;

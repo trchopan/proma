@@ -1,37 +1,93 @@
 import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
-
+import { extractCanonicalTopicData } from "$/core/markdown/canonical-topic";
+import {
+  parseScalarFrontMatterEntries,
+  splitFrontMatter,
+} from "$/core/markdown/frontmatter";
+import { renderDigestMarkdown } from "$/domain/digest/render";
 import {
   DIGEST_CATEGORIES,
   DIGEST_SOURCES,
   type DigestCategory,
   type DigestItem,
   type DigestSource,
-  renderDigestMarkdown,
-} from "../digest";
-import { extractCanonicalTopicData } from "../markdown/canonical-topic";
-import {
-  parseScalarFrontMatterEntries,
-  splitFrontMatter,
-} from "../markdown/frontmatter";
+} from "$/domain/digest/types";
 
-export type WriteStageOneDigestItemsOptions = {
+export type WriteDigestItemsOptions = {
   projectRoot: string;
   items: DigestItem[];
   now?: Date;
+  allowedSources?: readonly string[];
 };
 
-export type StagedDigestItem = {
+export type DigestNoteItem = {
   item: DigestItem;
   absolutePath: string;
   relativePath: string;
 };
 
-type StageOneFrontMatter = {
+type DigestNoteFrontMatter = {
   category: DigestCategory;
   source: DigestSource;
   merged: boolean;
+  merged_topic_paths: string[];
 };
+
+function parseArrayItemValue(raw: string): string {
+  return raw.trim().replace(/^['"]|['"]$/g, "");
+}
+
+function parseFrontMatterStringArray(
+  frontMatter: string,
+  key: string,
+): string[] {
+  const lines = frontMatter.split("\n");
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    const match = line.match(/^\s*([a-z_]+):\s*(.*)$/);
+    if (!match || match[1] !== key) {
+      continue;
+    }
+
+    const inlineValue = (match[2] ?? "").trim();
+    if (inlineValue.length > 0) {
+      if (!inlineValue.startsWith("[") || !inlineValue.endsWith("]")) {
+        return [];
+      }
+
+      const inner = inlineValue.slice(1, -1).trim();
+      if (inner.length === 0) {
+        return [];
+      }
+
+      return inner
+        .split(",")
+        .map(parseArrayItemValue)
+        .filter((value) => value.length > 0);
+    }
+
+    const values: string[] = [];
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const itemLine = lines[j] ?? "";
+      const itemMatch = itemLine.match(/^\s*-\s+(.+)$/);
+      if (!itemMatch?.[1]) {
+        break;
+      }
+
+      const value = parseArrayItemValue(itemMatch[1]);
+      if (value.length > 0) {
+        values.push(value);
+      }
+      i = j;
+    }
+
+    return values;
+  }
+
+  return [];
+}
 
 function toDateString(now: Date): string {
   return now.toISOString().slice(0, 10);
@@ -75,7 +131,7 @@ export async function allocateNextIndex(
   return maxIndex + 1;
 }
 
-function buildStageOneRelativePath(
+function buildDigestNoteRelativePath(
   category: DigestCategory,
   datePrefix: string,
   index: number,
@@ -90,21 +146,18 @@ function parseDigestCategory(input: string): DigestCategory | null {
     : null;
 }
 
-function parseDigestSource(input: string): DigestSource | null {
+function parseDigestSource(
+  input: string,
+  allowedSources: readonly string[],
+): DigestSource | null {
   const value = input.trim().toLowerCase();
-
-  if (value === "figma" || value === "file") {
-    return "document";
-  }
-
-  return (DIGEST_SOURCES as readonly string[]).includes(value)
-    ? (value as DigestSource)
-    : null;
+  return allowedSources.includes(value) ? (value as DigestSource) : null;
 }
 
-function parseStageOneFrontMatter(
+function parseDigestNoteFrontMatter(
   markdown: string,
-): StageOneFrontMatter | null {
+  allowedSources: readonly string[],
+): DigestNoteFrontMatter | null {
   const { frontMatter } = splitFrontMatter(markdown);
   const entries = parseScalarFrontMatterEntries(frontMatter);
 
@@ -119,7 +172,7 @@ function parseStageOneFrontMatter(
 
   const frontMatterSource = entries.get("source");
   const source = frontMatterSource
-    ? parseDigestSource(frontMatterSource)
+    ? parseDigestSource(frontMatterSource, allowedSources)
     : null;
 
   if (!source) {
@@ -142,42 +195,60 @@ function parseStageOneFrontMatter(
     category,
     source,
     merged,
+    merged_topic_paths: parseFrontMatterStringArray(
+      frontMatter,
+      "merged_topic_paths",
+    ),
   };
 }
 
-function renderStageOneFrontMatter(metadata: StageOneFrontMatter): string {
+function renderDigestNoteFrontMatter(metadata: DigestNoteFrontMatter): string {
   return [
     "---",
     `category: ${metadata.category}`,
     `source: ${metadata.source}`,
     `merged: ${metadata.merged ? "true" : "false"}`,
+    "merged_topic_paths:",
+    ...metadata.merged_topic_paths.map((topicPath) => `  - '${topicPath}'`),
     "---",
     "",
   ].join("\n");
 }
 
-function renderStageOneDigestFile(item: DigestItem, merged: boolean): string {
-  return `${renderStageOneFrontMatter({
+function renderDigestNoteFile(
+  item: DigestItem,
+  merged: boolean,
+  mergedTopicPaths: string[],
+): string {
+  return `${renderDigestNoteFrontMatter({
     category: item.category,
     source: item.source,
     merged,
+    merged_topic_paths: [...new Set(mergedTopicPaths)],
   })}${renderDigestMarkdown(item)}`;
 }
 
-function parseStageOneDigestItem(
+function parseDigestNoteItem(
   markdown: string,
   fileName: string,
-): { item: DigestItem; merged: boolean } {
-  const frontMatter = parseStageOneFrontMatter(markdown);
+  allowedSources: readonly string[],
+): {
+  item: DigestItem;
+  merged: boolean;
+  mergedTopicPaths: string[];
+} {
+  const frontMatter = parseDigestNoteFrontMatter(markdown, allowedSources);
   const { body } = splitFrontMatter(markdown);
-  const canonical = extractCanonicalTopicData(body);
+  const canonical = extractCanonicalTopicData(body, {
+    allowedSources,
+  });
 
   if (!frontMatter) {
-    throw new Error(`Unable to parse staged note metadata: ${fileName}`);
+    throw new Error(`Unable to parse digest note metadata: ${fileName}`);
   }
 
   if (!canonical.summary) {
-    throw new Error(`Unable to parse staged note summary: ${fileName}`);
+    throw new Error(`Unable to parse digest note summary: ${fileName}`);
   }
 
   return {
@@ -190,16 +261,17 @@ function parseStageOneDigestItem(
       references: canonical.references,
     },
     merged: frontMatter.merged,
+    mergedTopicPaths: frontMatter.merged_topic_paths,
   };
 }
 
-export async function writeStageOneDigestItems(
-  options: WriteStageOneDigestItemsOptions,
-): Promise<StagedDigestItem[]> {
+export async function writeDigestItems(
+  options: WriteDigestItemsOptions,
+): Promise<DigestNoteItem[]> {
   const notesDir = path.join(options.projectRoot, "notes");
   const datePrefix = toDateString(options.now ?? new Date());
   const nextByCategory = new Map<DigestCategory, number>();
-  const stagedItems: StagedDigestItem[] = [];
+  const digestItems: DigestNoteItem[] = [];
 
   await mkdir(notesDir, { recursive: true });
 
@@ -208,17 +280,17 @@ export async function writeStageOneDigestItems(
     const currentNext = nextByCategory.get(item.category);
     const index = currentNext ?? (await allocateNextIndex(notesDir, keyPrefix));
 
-    const relativePath = buildStageOneRelativePath(
+    const relativePath = buildDigestNoteRelativePath(
       item.category,
       datePrefix,
       index,
     );
     const absolutePath = path.join(options.projectRoot, relativePath);
-    const markdown = renderStageOneDigestFile(item, false);
+    const markdown = renderDigestNoteFile(item, false, []);
 
     await Bun.write(absolutePath, markdown);
 
-    stagedItems.push({
+    digestItems.push({
       item,
       absolutePath,
       relativePath,
@@ -226,12 +298,17 @@ export async function writeStageOneDigestItems(
     nextByCategory.set(item.category, index + 1);
   }
 
-  return stagedItems;
+  return digestItems;
 }
 
-export async function listPendingStageOneDigestItems(
+export async function listPendingDigestItems(
   projectRoot: string,
-): Promise<StagedDigestItem[]> {
+  options?: { allowedSources?: readonly string[] },
+): Promise<DigestNoteItem[]> {
+  const allowedSources =
+    options?.allowedSources && options.allowedSources.length > 0
+      ? [...options.allowedSources]
+      : [...DIGEST_SOURCES];
   const notesDir = path.join(projectRoot, "notes");
   let files: string[] = [];
 
@@ -241,7 +318,7 @@ export async function listPendingStageOneDigestItems(
     return [];
   }
 
-  const pending: StagedDigestItem[] = [];
+  const pending: DigestNoteItem[] = [];
 
   for (const fileName of files.sort()) {
     if (!fileName.endsWith(".md")) {
@@ -251,14 +328,14 @@ export async function listPendingStageOneDigestItems(
     const relativePath = path.join("notes", fileName);
     const absolutePath = path.join(projectRoot, relativePath);
     const markdown = await Bun.file(absolutePath).text();
-    const staged = parseStageOneDigestItem(markdown, fileName);
+    const digestNote = parseDigestNoteItem(markdown, fileName, allowedSources);
 
-    if (staged.merged) {
+    if (digestNote.merged) {
       continue;
     }
 
     pending.push({
-      item: staged.item,
+      item: digestNote.item,
       absolutePath,
       relativePath,
     });
@@ -267,16 +344,28 @@ export async function listPendingStageOneDigestItems(
   return pending;
 }
 
-export async function markStageOneDigestItemMerged(
+export async function markDigestItemMerged(
   absolutePath: string,
+  mergedTopicPaths: string[],
+  options?: { allowedSources?: readonly string[] },
 ): Promise<void> {
+  const allowedSources =
+    options?.allowedSources && options.allowedSources.length > 0
+      ? [...options.allowedSources]
+      : [...DIGEST_SOURCES];
   const markdown = await Bun.file(absolutePath).text();
   const fileName = path.basename(absolutePath);
-  const staged = parseStageOneDigestItem(markdown, fileName);
+  const digestNote = parseDigestNoteItem(markdown, fileName, allowedSources);
 
-  if (staged.merged) {
+  if (digestNote.merged) {
     return;
   }
 
-  await Bun.write(absolutePath, renderStageOneDigestFile(staged.item, true));
+  await Bun.write(
+    absolutePath,
+    renderDigestNoteFile(digestNote.item, true, [
+      ...digestNote.mergedTopicPaths,
+      ...mergedTopicPaths,
+    ]),
+  );
 }

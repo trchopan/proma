@@ -1,12 +1,10 @@
 export {
   parseDigestCommandArgs,
+  parseImportCommandArgs,
   parseMergeCommandArgs,
   parseReportCommandArgs,
   renderDiffPreview,
   runCli,
-} from "./src/cli";
-export type {
-  PromaConfig,
-  PromptPlugin,
-  PromptPluginApi,
-} from "./src/prompting/plugin";
+} from "$/cli";
+
+export type { ProjectConfig } from "$/core/config";

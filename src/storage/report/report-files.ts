@@ -1,21 +1,24 @@
 import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 import {
-  extractCanonicalTopicData,
+  extractTopicDataByCategory,
   extractTopicTitle,
   firstMeaningfulLine,
-} from "../markdown/canonical-topic";
+  topicSignalsFromCategoryData,
+} from "$/core/markdown/canonical-topic";
+
 import {
   parseFrontMatter,
   parseScalarFrontMatterEntries,
   splitFrontMatter,
-} from "../markdown/frontmatter";
+} from "$/core/markdown/frontmatter";
+
 import type {
   BaseReportContext,
   ReportContextPayload,
   ReportInputContext,
   ReportPeriod,
-} from "../report";
+} from "$/domain/report/report";
 
 type WriteReportFileOptions = {
   projectRoot: string;
@@ -179,10 +182,17 @@ async function loadInputContext(
 ): Promise<ReportInputContext> {
   const markdown = await Bun.file(absolutePath).text();
   const parsed = parseFrontMatter(markdown);
-  const canonical = extractCanonicalTopicData(parsed.body);
   const categoryHint =
     parsed.metadata.category ??
     inferTopicCategoryFromPath(projectRoot, absolutePath);
+  const typedCategory =
+    categoryHint === "planning" ||
+    categoryHint === "research" ||
+    categoryHint === "discussion"
+      ? categoryHint
+      : "planning";
+  const topicData = extractTopicDataByCategory(parsed.body, typedCategory);
+  const canonical = topicSignalsFromCategoryData(typedCategory, topicData);
   const topicHint =
     extractTopicTitle(parsed.body) || path.basename(absolutePath, ".md");
 

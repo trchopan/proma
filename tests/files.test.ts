@@ -3,21 +3,23 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import type { DigestItem, TopicRoutingTarget } from "../src/digest";
+import type { DigestItem, TopicRoutingTarget } from "$/domain/digest/types";
 import {
   allocateNextIndex,
-  listPendingStageOneDigestItems,
+  collectCategoryTagPool,
+  listPendingDigestItems,
   listTopicCandidates,
   loadReportContext,
-  markStageOneDigestItemMerged,
+  markDigestItemMerged,
   prepareTopicMerge,
+  rankTopicCandidates,
   resolveBaseReportFiles,
   resolveReportInputFiles,
   slugifyTopic,
+  writeDigestItems,
   writePreparedTopicMerge,
   writeReportFile,
-  writeStageOneDigestItems,
-} from "../src/files";
+} from "$/files";
 
 async function withTempDir(run: (dir: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(path.join(tmpdir(), "proma-tests-"));
@@ -44,7 +46,7 @@ test("allocateNextIndex increments from existing prefixed files", async () => {
   });
 });
 
-test("writeStageOneDigestItems writes to notes directory", async () => {
+test("writeDigestItems writes to notes directory", async () => {
   await withTempDir(async (dir) => {
     const items: DigestItem[] = [
       {
@@ -65,7 +67,7 @@ test("writeStageOneDigestItems writes to notes directory", async () => {
       },
     ];
 
-    const written = await writeStageOneDigestItems({
+    const written = await writeDigestItems({
       projectRoot: dir,
       items,
       now: new Date("2026-03-09T10:00:00Z"),
@@ -81,10 +83,11 @@ test("writeStageOneDigestItems writes to notes directory", async () => {
     expect(content).toContain("category: research");
     expect(content).toContain("source: slack");
     expect(content).toContain("merged: false");
+    expect(content).toContain("merged_topic_paths:");
   });
 });
 
-test("listPendingStageOneDigestItems returns only unmerged staged notes", async () => {
+test("listPendingDigestItems returns only unmerged digest notes", async () => {
   await withTempDir(async (dir) => {
     const items: DigestItem[] = [
       {
@@ -105,15 +108,21 @@ test("listPendingStageOneDigestItems returns only unmerged staged notes", async 
       },
     ];
 
-    const written = await writeStageOneDigestItems({
+    const written = await writeDigestItems({
       projectRoot: dir,
       items,
       now: new Date("2026-03-09T10:00:00Z"),
     });
 
-    await markStageOneDigestItemMerged(written[0]?.absolutePath ?? "");
+    await markDigestItemMerged(written[0]?.absolutePath ?? "", [
+      "topics/planning/sprint-goals.md",
+    ]);
 
-    const pending = await listPendingStageOneDigestItems(dir);
+    const mergedContent = await Bun.file(written[0]?.absolutePath ?? "").text();
+    expect(mergedContent).toContain("merged_topic_paths:");
+    expect(mergedContent).toContain("topics/planning/sprint-goals.md");
+
+    const pending = await listPendingDigestItems(dir);
 
     expect(pending.map((entry) => entry.relativePath)).toEqual([
       "notes/discussion_2026-03-09_1.md",
@@ -154,9 +163,73 @@ test("listTopicCandidates reads topic front matter", async () => {
         topic: "Release Readiness",
         tags: ["qa", "release"],
         summary: "Release readiness baseline.",
+        keyPoints: [],
+        timeline: [],
+        references: [],
       },
     ]);
   });
+});
+
+test("rankTopicCandidates prioritizes overlapping references and tokens", () => {
+  const ranked = rankTopicCandidates(
+    {
+      category: "planning",
+      source: "slack",
+      summary: "Release cadence policy with hotfix rules",
+      keyPoints: ["Skip monthly release without agenda"],
+      timeline: ["2026-03-13 - Publish decision"],
+      references: [{ source: "slack", link: "https://example.com/thread" }],
+    },
+    [
+      {
+        slug: "release-plan",
+        topic: "Release Plan",
+        tags: ["release-plan"],
+        summary: "Task schedule for v1.13",
+        keyPoints: ["Assign PIC"],
+        timeline: ["2026-03-10 - Start execution"],
+        references: [],
+      },
+      {
+        slug: "release-cadence-policy",
+        topic: "Release cadence policy",
+        tags: ["release-cadence", "hotfix-process"],
+        summary: "Policy for skipping releases and using hotfixes",
+        keyPoints: ["Skip when no agenda"],
+        timeline: ["2026-03-13 - Publish decision"],
+        references: [{ source: "slack", link: "https://example.com/thread" }],
+      },
+    ],
+    8,
+  );
+
+  expect(ranked[0]?.slug).toBe("release-cadence-policy");
+});
+
+test("collectCategoryTagPool normalizes and deduplicates tags", () => {
+  const tags = collectCategoryTagPool([
+    {
+      slug: "a",
+      topic: "A",
+      tags: ["Release Cadence", "release-cadence"],
+      summary: "A",
+      keyPoints: [],
+      timeline: [],
+      references: [],
+    },
+    {
+      slug: "b",
+      topic: "B",
+      tags: ["Hotfix Process"],
+      summary: "B",
+      keyPoints: [],
+      timeline: [],
+      references: [],
+    },
+  ]);
+
+  expect(tags).toEqual(["hotfix-process", "release-cadence"]);
 });
 
 test("prepareTopicMerge creates normalized front matter and merged body", async () => {
@@ -180,6 +253,7 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
         references: [],
       },
       target,
+      mergedDigestId: "notes/discussion_2026-03-09_1.md",
       now: new Date("2026-03-09T10:00:00Z"),
     });
 
@@ -193,10 +267,12 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
     expect(plan.proposedContent).toContain("  - 'incident-response'");
     expect(plan.proposedContent).toContain("  - 'post-mortem'");
     expect(plan.proposedContent).toContain("## Summary");
-    expect(plan.proposedContent).toContain("## Key Points");
-    expect(plan.proposedContent).toContain("## Timeline");
+    expect(plan.proposedContent).toContain("## Context/Background");
+    expect(plan.proposedContent).toContain("## Resolution");
+    expect(plan.proposedContent).toContain("## Participants");
     expect(plan.proposedContent).toContain("## References");
-    expect(plan.proposedContent).toContain("merged_digest_ids:");
+    expect(plan.proposedContent).toContain("digested_note_paths:");
+    expect(plan.proposedContent).toContain("notes/discussion_2026-03-09_1.md");
     expect(plan.proposedContent).not.toContain("source_refs:");
     expect(plan.proposedContent).not.toContain("merged_ingest_ids:");
     expect(plan.hasChanges).toBe(true);
@@ -226,10 +302,8 @@ test("prepareTopicMerge is idempotent for same reference", async () => {
         "  - 'release'",
         "sources:",
         "  - slack",
-        "source_refs:",
-        "  - 'slack: https://example.com/thread'",
-        "merged_digest_ids:",
-        "  - 'refs:slack: https://example.com/thread'",
+        "digested_note_paths:",
+        "  - 'notes/planning_2026-03-09_1.md'",
         "---",
         "",
         "# Release Policy",
@@ -266,6 +340,7 @@ test("prepareTopicMerge is idempotent for same reference", async () => {
         topic: "Release Policy",
         tags: ["release"],
       },
+      mergedDigestId: "notes/planning_2026-03-09_2.md",
       now: new Date("2026-03-09T10:00:00Z"),
     });
 
@@ -290,6 +365,7 @@ test("prepareTopicMerge is idempotent for same reference", async () => {
         topic: "Release Policy",
         tags: ["release"],
       },
+      mergedDigestId: "notes/planning_2026-03-09_3.md",
       now: new Date("2026-03-09T10:05:00Z"),
     });
 

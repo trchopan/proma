@@ -1,6 +1,6 @@
 # Proma - Project Management Toolkit powered by LLMs
 
-Source: ![github](https://github.com/trchopan/proma)
+Source: [https://github.com/trchopan/proma](https://github.com/trchopan/proma)
 
 ## Get started
 
@@ -12,40 +12,13 @@ npm install @trchopan/proma
 bun add @trchopan/proma
 ```
 
-Create `proma.config.js` in your repository root:
+Set your API key:
 
-For full plugin architecture, recipes, and troubleshooting, see `PLUGIN_SYSTEM.md`.
-
-```js
-export default {
-  plugins: [
-    {
-      name: "custom-report-tone",
-      setup(api) {
-        api.patchOperation("report", (current) => ({
-          ...current,
-          buildPrompt(context) {
-            const built = current.buildPrompt(context);
-            return {
-              ...built,
-              messages: built.messages.map((message) =>
-                message.role === "system"
-                  ? {
-                      ...message,
-                      content: `${message.content}\nUse a neutral executive tone.`,
-                    }
-                  : message,
-              ),
-            };
-          },
-        }));
-      },
-    },
-  ],
-};
+```bash
+export OPENAI_API_KEY="your_api_key"
 ```
 
-Add scripts:
+Optional scripts:
 
 ```json
 {
@@ -61,9 +34,8 @@ Then run `bun run digest`, `bun run merge`, and `bun run report`.
 
 Notes:
 
-- Supported config files are `proma.config.ts`, `proma.config.js`, and `proma.config.mjs`.
 - `report` defaults to `weekly` when `--period` is omitted.
-- Set `OPENAI_API_KEY` in your environment before running commands.
+- Use `--dry-run` to preview AI requests and planned actions without sending requests or writing files.
 
 ## Develop proma locally
 
@@ -101,97 +73,65 @@ Then use the entry point to run:
 bun run ./bin/proma.ts
 ```
 
-## Digest CLI feature
+## CLI workflow
 
-The `digest` command reads an input text file, asks OpenAI to split/classify it into digest items, and writes stage-1 note files.
-The `merge` command then processes pending stage-1 notes into topic files.
+Proma runs in three commands:
+
+- `digest`: parse raw notes and write digest notes.
+- `merge`: process pending digest notes into canonical topic files.
+- `report`: generate a period report from topic files (and optional base reports).
+
+Proma also provides an MCP-based ingestion command:
+
+- `import`: discover MCP actions or call an MCP tool and write raw markdown under `<project>/imports` for the digest pipeline.
+
 Digest summaries and key points are always generated in English, even when input notes are in another language.
-Digest input also supports markdown images (`![alt](./image.png)`), which are loaded and included in the AI prompt.
-Missing or unsupported local images are skipped with a warning, and digest generation continues.
+Digest input supports markdown images (`![alt](./image.png)`); missing or unsupported local images are skipped with a warning.
 
 Prompting and schema control is centralized in `src/prompting/`:
 
 - `src/prompting/registry.ts` contains built-in operation definitions for `digest`, `merge`, and `report`
 - `src/prompting/execute.ts` runs model calls from operation contracts
-- `src/prompting/load.ts` loads optional user plugins from `proma.config.ts|js|mjs`
-- `src/prompting/validate.ts` validates composed registry contracts at startup
+- `src/prompting/validate.ts` validates registry contracts at startup
 
-Deep plugin documentation: `PLUGIN_SYSTEM.md`
-
-Create `proma.config.ts` (or `.js`/`.mjs`) to customize prompting behavior via plugins:
-
-Need advanced examples (`overrideOperation`, multi-plugin order, troubleshooting)? See `PLUGIN_SYSTEM.md`.
-
-```ts
-export default {
-  plugins: [
-    {
-      name: "custom-report-tone",
-      setup(api) {
-        api.patchOperation("report", (current) => ({
-          ...current,
-          buildPrompt(context) {
-            const built = current.buildPrompt(context);
-            return {
-              ...built,
-              messages: built.messages.map((message) =>
-                message.role === "system"
-                  ? {
-                      ...message,
-                      content: `${message.content}\nUse a neutral executive tone.`,
-                    }
-                  : message,
-              ),
-            };
-          },
-        }));
-      },
-    },
-  ],
-};
-```
-
-Plugin order is deterministic: plugins run in declaration order and later patches can override earlier ones.
-
-Required environment variable:
+Examples:
 
 ```bash
-export OPENAI_API_KEY="your_api_key"
-```
-
-Run stage 1 (`digest`):
-
-```bash
+# digest
 proma digest --input ./raw.md --project ./acme
-```
-
-Run stage 1 with verbose debugging logs:
-
-```bash
 proma digest --input ./raw.md --project ./acme --verbose
-```
+proma digest --input ./raw.md --project ./acme --dry-run
 
-Run stage 2/3 (`merge`):
-
-```bash
+# merge
 proma merge --project ./acme
-```
-
-Run stage 2/3 with verbose debugging logs:
-
-```bash
 proma merge --project ./acme --verbose
-```
+proma merge --project ./acme --dry-run
+proma merge --project ./acme --auto-merge
 
-Run report generation (`report`):
-
-```bash
+# report
 proma report --project ./acme --period weekly
-```
+proma report --project ./acme --period weekly --dry-run
 
-Run report generation with explicit topic inputs and base reports:
+# import action discovery
+proma import --project ./acme --server mcp.slack --list-actions
+proma import --project ./acme --server mcp.slack --list-actions --verbose
 
-```bash
+# import GitHub actions (uses local gh auth)
+proma import --project ./acme --server github --list-actions
+
+# import tool call
+proma import --project ./acme --server mcp.slack --tool fetch_thread --args '{"channel":"C123","thread_ts":"1710.123"}'
+proma import --project ./acme --server mcp.slack --tool fetch_thread --args '{"channel":"C123"}' --output ./acme/imports/slack-thread.md
+
+# import GitHub issue / PR data
+proma import --project ./acme --server github --tool issue_get --args '{"owner":"acme","repo":"platform","number":123}'
+proma import --project ./acme --server github --tool pr_get --args '{"owner":"acme","repo":"platform","number":456}'
+proma import --project ./acme --server github --tool prs_list --args '{"owner":"acme","repo":"platform","author":"alice","state":"all","per_page":20,"page":1}'
+
+# handoff from import -> digest
+proma digest --project ./acme --input ./acme/imports/2026-03-12_slack_fetch-thread.md
+
+# report with explicit topic inputs + base reports
 proma report --project ./acme --period weekly \
   --input ./acme/topics/planning/release-readiness.md \
   --input ./acme/topics/discussion/incident-response.md \
@@ -199,61 +139,113 @@ proma report --project ./acme --period weekly \
   --base ./acme/reports/2026-03-08_weekly.md
 ```
 
-Optional model override:
+Optional flags:
 
-```bash
-proma digest --input ./raw.md --project ./acme --model gpt-4.1-mini
-```
+- `--model <name>`: override model (example: `proma digest --input ./raw.md --project ./acme --model gpt-4.1-mini`).
+- `--verbose`: enable detailed debug logs.
+- `--dry-run`: skip AI requests and file writes.
+- `--config <file>`: override config file path (default: `<cwd>/proma.config.ts`).
+- `--auto-merge`: for `merge` only, auto-apply proposed merges without confirmation (diff previews are still printed).
+- `--server`: for `import` only, must be either built-in `github` or `mcp.<server_name>` from project config.
+- `--list-actions`: for `import` only, lists MCP actions for the selected server.
+- `--tool <name>` + `--args <json>`: for `import` only, executes one MCP tool call with JSON object arguments.
 
 Note: the digest flow uses OpenAI Structured Outputs (`json_schema`) and fails fast if the selected model does not support it.
 
-`--project` is the root output directory. Output structure:
+## File layout and behavior
 
-- Stage 1 raw digests: `<project>/notes/<category>_<YYYY-MM-DD>_<index>.md`
-- Stage 2/3 topic files from `merge`: `<project>/topics/<category>/<topic-slug>.md`
+`--project` is the root output directory.
+
+- Raw digest notes: `<project>/notes/<category>_<YYYY-MM-DD>_<index>.md`
+- Imported raw markdown: `<project>/imports/<YYYY-MM-DD>_<server>_<tool>.md` (collision fallback: `_2`, `_3`, ...)
+- Topic files from `merge`: `<project>/topics/<category>/<topic-slug>.md`
 - Reports: `<project>/reports/<YYYY-MM-DD>_<period>.md` (collision fallback: `_2`, `_3`, ...)
 
-Report file behavior:
+Report behavior:
 
 - `--period` is optional; default is `weekly`. Valid values: `daily`, `weekly`, `bi-weekly`, `monthly`.
-- Repeat `--input` to target specific markdown files; when omitted, the CLI scans all markdown files under `<project>/topics/planning`, `<project>/topics/research`, and `<project>/topics/discussion`.
-- Repeat `--base` to provide specific previous reports; when omitted, the CLI loads all markdown files under `<project>/reports`.
+- Repeat `--input` to target specific markdown files; when omitted, the CLI scans markdown files under `<project>/topics/planning`, `<project>/topics/research`, and `<project>/topics/discussion`.
+- Repeat `--base` to provide specific previous reports; when omitted, the CLI loads markdown files under `<project>/reports`.
 - Report files include YAML front matter with `period`, `generated_at`, `model`, `input_files`, and `base_reports`.
 
-Stage-1 files include YAML front matter with `category`, `source`, and `merged`.
-`merge` only picks files where `merged` is not `true`.
+Digest note behavior:
 
-Topic files include YAML front matter metadata (`category`, `created_at`, `updated_at`, `tags`, `sources`, `merged_digest_ids`).
-The topic name is stored in the Markdown level-1 title (`# ...`) at the top of the file body.
-Tag metadata is normalized to lowercase kebab-case, deduplicated, and sorted.
+- Digest note files include YAML front matter with `category`, `source`, `merged`, and `merged_topic_paths`.
+- `merge` only picks files where `merged` is not `true`.
 
-Topic files are canonical-only: each file keeps a single merged `Summary/Key Points/Timeline/References` view instead of appending chronological digest entries.
-Repeated ingestion of already-merged references becomes a no-op (`No topic change`).
+Topic file behavior:
 
-After topic targets are selected, the CLI shows a diff preview for each proposed merge and asks for confirmation (`y` to apply, default `N` to skip).
+- Topic files include YAML front matter metadata (`category`, `created_at`, `updated_at`, `tags`, `sources`, `digested_note_paths`).
+- `digested_note_paths` stores merged digest-note IDs (project-relative note paths such as `notes/planning_2026-03-09_1.md`).
+- The topic name is stored in the markdown level-1 title (`# ...`) at the top of the file body.
+- Tag metadata is normalized to lowercase kebab-case, deduplicated, and sorted; merge prefers reusing existing category tags before adding new ones.
+- New topic slugs are normalized to kebab-case and capped at 100 characters.
+- Topic files are canonical-only and category-specific:
+  - `discussion`: `Summary`, `Context/Background`, `Resolution`, `Participants`, `References`
+  - `research`: `Summary`, `Problem Statement`, `Research Plan`, `Key Findings`, `Person in Charge`, `References`
+  - `planning`: `Summary`, `Objectives / Success Criteria`, `Scope`, `Deliverables`, `Plan`, `Timeline`, `Teams/Individuals Involved`, `References`
+- Merge routes each digest note to exactly one primary topic target.
+- Merge pre-ranks candidates deterministically and sends only the top 8 candidates to routing.
+- Merge applies semantic content refinement to reduce unrelated/duplicated key points and timeline entries, with deterministic fallback on failure.
+- Repeated ingestion of already-merged references becomes a no-op (`No topic change`).
+- After topic targets are selected, the CLI shows a diff preview for each proposed merge. By default it asks for confirmation (`y` to apply, default `N` to skip); with `--auto-merge`, it applies automatically without prompting.
 
-Logging behavior:
+Generated markdown sections:
+
+- Digest notes (`notes/*.md`) use: `## Summary`, `## Key Points`, `## Timeline`, `## References`.
+- Topic files (`topics/*/*.md`) use category-specific sections (see Topic file behavior above).
+- Planning timeline entries, when present, must use strict `YYYY-MM-DD - <context>` format.
+- `## References` entries use `- <source>: <link>` format (example: `- slack: https://...`).
+- Allowed digest/reference sources default to: `slack`, `wiki`, `git`, `document`.
+
+Project config override:
+
+- Commands discover config from the current working directory (repo root where you run `proma`), not from `--project`.
+- Default config path is `<cwd>/proma.config.ts`; you can override with `--config <file>`.
+- If `--config` is provided and the file does not exist, command execution fails.
+- Config export must be a default object. Supported keys:
+  - `digest.allowedSources`
+  - `github.host` (optional GitHub host for `--server github`, example: `git.example.com`)
+  - `mcp.<serverName>` with local server config (`type`, `command`)
+
+```ts
+// proma.config.ts
+export default {
+  digest: {
+    allowedSources: ["jira", "notion"],
+  },
+  github: {
+    host: "git.example.com",
+  },
+  mcp: {
+    slack: {
+      type: "local",
+      command: ["bun", "./scripts/slack-mcp.ts"],
+    },
+  },
+};
+```
+
+- Effective allowed sources are `defaults + custom` (union, lowercase, deduped).
+- `import --server github` uses built-in GitHub import with local `gh` auth.
+- `github.host` is optional; when set, Proma runs `gh api --hostname <host> ...` for GitHub import calls.
+- `import --server mcp.<name>` resolves `<name>` from `config.mcp` and is case-sensitive.
+- Breaking change: legacy bare MCP names like `--server slack` are rejected; use `--server mcp.slack`.
+
+## Logging
 
 - Every run writes structured logs to `logs/<YYYY-MM-DD>/*.jsonl` by default.
 - Without `--verbose`, console output is progress-focused.
 - With `--verbose`, console shows heavy debug logs and file logs include full AI prompt/response text.
+- With `--dry-run`, AI requests are not sent and file writes are skipped (including output files and log files).
 
-Implementation structure (refactor baseline):
+## Implementation notes
 
-- `src/cli.ts` orchestrates commands, while `src/cli/` holds focused helpers for args, diff preview, and markdown image loading.
+- `src/cli.ts` orchestrates commands; `src/cli/` holds helpers for args, diff preview, and markdown image loading.
 - `src/files.ts` is a barrel export surface for storage modules under `src/storage/`.
 - Markdown parsing/rendering concerns live in `src/markdown/`.
 - Topic merge decision logic is isolated in `src/services/topic-merge.ts`.
 - Runtime defaults and endpoint resolution are centralized in `src/config.ts`.
-
-Each generated markdown file includes:
-
-- `## Summary`
-- `## Key Points`
-- `## Timeline` (always present; use `- None` when no date context is available)
-- Timeline entries, when present, must use strict `YYYY-MM-DD - <context>` format
-- `## References` entries in `- <source>: <link>` format (for example `- slack: https://...`)
-- Allowed digest/reference sources: `slack`, `wiki`, `git`, `document` (use `document` for Figma links and document links such as Google Drive)
 
 ## License
 
