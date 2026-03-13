@@ -113,20 +113,21 @@ proma report --project ./acme --period weekly
 proma report --project ./acme --period weekly --dry-run
 
 # import action discovery
-proma import --project ./acme --server mcp.slack --list-actions
-proma import --project ./acme --server mcp.slack --list-actions --verbose
+proma import --server mcp.slack --list-actions
+proma import --server mcp.slack --list-actions --verbose
 
 # import GitHub actions (uses local gh auth)
-proma import --project ./acme --server github --list-actions
+proma import --server github --list-actions
 
-# import tool call
-proma import --project ./acme --server mcp.slack --tool fetch_thread --args '{"channel":"C123","thread_ts":"1710.123"}'
-proma import --project ./acme --server mcp.slack --tool fetch_thread --args '{"channel":"C123"}' --output ./acme/imports/slack-thread.md
+# import tool call (default: prints markdown to stdout)
+proma import --server mcp.slack --tool fetch_thread --args '{"channel":"C123","thread_ts":"1710.123"}'
+proma import --server mcp.slack --tool fetch_thread --args '{"channel":"C123"}' > ./acme/imports/slack-thread.md
+proma import --server mcp.slack --tool fetch_thread --args '{"channel":"C123"}' --output ./acme/imports/slack-thread.md
 
 # import GitHub issue / PR data
-proma import --project ./acme --server github --tool issue_get --args '{"owner":"acme","repo":"platform","number":123}'
-proma import --project ./acme --server github --tool pr_get --args '{"owner":"acme","repo":"platform","number":456}'
-proma import --project ./acme --server github --tool prs_list --args '{"owner":"acme","repo":"platform","author":"alice","state":"all","per_page":20,"page":1}'
+proma import --server github --tool issue_get --args '{"owner":"acme","repo":"platform","number":123}'
+proma import --server github --tool pr_get --args '{"owner":"acme","repo":"platform","number":456}'
+proma import --server github --tool prs_list --args '{"owner":"acme","repo":"platform","author":"alice","state":"all","per_page":20,"page":1}'
 
 # handoff from import -> digest
 proma digest --project ./acme --input ./acme/imports/2026-03-12_slack_fetch-thread.md
@@ -149,15 +150,17 @@ Optional flags:
 - `--server`: for `import` only, must be either built-in `github` or `mcp.<server_name>` from project config.
 - `--list-actions`: for `import` only, lists MCP actions for the selected server.
 - `--tool <name>` + `--args <json>`: for `import` only, executes one MCP tool call with JSON object arguments.
+- `--output <file>`: for `import` only, writes markdown output to the provided file path. When omitted, import prints markdown to stdout.
 
 Note: the digest flow uses OpenAI Structured Outputs (`json_schema`) and fails fast if the selected model does not support it.
 
 ## File layout and behavior
 
-`--project` is the root output directory.
+`--project` is the root output directory for `digest`, `merge`, and `report`.
+
+`import` is project-free: it prints markdown to stdout by default and only writes files when `--output <file>` is provided.
 
 - Raw digest notes: `<project>/notes/<category>_<YYYY-MM-DD>_<index>.md`
-- Imported raw markdown: `<project>/imports/<YYYY-MM-DD>_<server>_<tool>.md` (collision fallback: `_2`, `_3`, ...)
 - Topic files from `merge`: `<project>/topics/<category>/<topic-slug>.md`
 - Reports: `<project>/reports/<YYYY-MM-DD>_<period>.md` (collision fallback: `_2`, `_3`, ...)
 

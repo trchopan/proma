@@ -8,7 +8,6 @@ export {
 } from "$/storage/digest/digest-notes";
 export {
   type ImportedFile,
-  resolveImportOutputPath,
   writeImportedMarkdown,
 } from "$/storage/import/import-files";
 export {

@@ -49,7 +49,6 @@ import {
   prepareTopicMerge,
   rankTopicCandidates,
   resolveBaseReportFiles,
-  resolveImportOutputPath,
   resolveReportInputFiles,
   writeDigestItems,
   writeImportedMarkdown,
@@ -92,7 +91,6 @@ type CliDependencies = {
   collectCategoryTagPool: typeof collectCategoryTagPool;
   prepareTopicMerge: typeof prepareTopicMerge;
   writePreparedTopicMerge: typeof writePreparedTopicMerge;
-  resolveImportOutputPath: typeof resolveImportOutputPath;
   listGithubTools: typeof listGithubTools;
   callGithubTool: typeof callGithubTool;
   listMcpTools: typeof listMcpTools;
@@ -130,7 +128,7 @@ function usage(): string {
     "Usage:",
     "  proma digest --input <file> --project <output-root> [--model <model>] [--config <file>] [--verbose] [--dry-run]",
     "  proma merge --project <output-root> [--model <model>] [--config <file>] [--verbose] [--dry-run] [--auto-merge]",
-    "  proma import --project <output-root> --server <github|mcp.<name>> (--list-actions | --tool <name> [--args <json>] [--output <file>]) [--config <file>] [--verbose] [--dry-run]",
+    "  proma import --server <github|mcp.<name>> (--list-actions | --tool <name> [--args <json>] [--output <file>]) [--config <file>] [--verbose] [--dry-run]",
     "  proma report --project <output-root> [--period <daily|weekly|bi-weekly|monthly>] [--input <file> ...] [--base <file> ...] [--model <model>] [--config <file>] [--verbose] [--dry-run]",
   ].join("\n");
 }
@@ -665,7 +663,6 @@ async function runImportCommand(
   deps: CliDependencies,
   logger: Logger,
 ): Promise<number> {
-  const projectRoot = path.resolve(parsed.project);
   const target = resolveImportServerTarget(parsed.server);
   let mcpCommand: string[] | undefined;
   let githubHost: string | undefined;
@@ -713,23 +710,23 @@ async function runImportCommand(
     throw new Error("Missing required argument: --tool");
   }
 
-  const outputPath = await deps.resolveImportOutputPath({
-    projectRoot,
-    server: parsed.server,
-    tool,
-    output: parsed.output,
-  });
-
   await logger.progress(
     "import.call.start",
     `Calling MCP tool '${tool}' on server '${parsed.server}'...`,
   );
 
   if (parsed.dryRun) {
-    await logger.progress(
-      "import.call.dry_run",
-      `Dry run: would write imported markdown to ${outputPath}`,
-    );
+    if (parsed.output) {
+      await logger.progress(
+        "import.call.dry_run",
+        `Dry run: would write imported markdown to ${path.resolve(parsed.output)}`,
+      );
+    } else {
+      await logger.progress(
+        "import.call.dry_run",
+        "Dry run: would print imported markdown to stdout",
+      );
+    }
     return 0;
   }
 
@@ -755,18 +752,19 @@ async function runImportCommand(
     result,
   });
 
-  const written: ImportedFile = await deps.writeImportedMarkdown({
-    projectRoot,
-    server: parsed.server,
-    tool,
-    output: parsed.output,
-    markdown,
-  });
+  if (parsed.output) {
+    const written: ImportedFile = await deps.writeImportedMarkdown({
+      output: parsed.output,
+      markdown,
+    });
 
-  await logger.progress(
-    "import.call.complete",
-    `Wrote imported markdown: ${written.absolutePath}`,
-  );
+    await logger.progress(
+      "import.call.complete",
+      `Wrote imported markdown: ${written.absolutePath}`,
+    );
+  } else {
+    await logger.progress("import.call.output", markdown);
+  }
   return 0;
 }
 
@@ -792,7 +790,6 @@ export async function runCli(
     collectCategoryTagPool,
     prepareTopicMerge,
     writePreparedTopicMerge,
-    resolveImportOutputPath,
     listGithubTools,
     callGithubTool,
     listMcpTools,
