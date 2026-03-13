@@ -81,6 +81,10 @@ Proma runs in three commands:
 - `merge`: process pending digest notes into canonical topic files.
 - `report`: generate a period report from topic files (and optional base reports).
 
+Proma also provides an MCP-based ingestion command:
+
+- `import`: discover MCP actions or call an MCP tool and write raw markdown under `<project>/imports` for the digest pipeline.
+
 Digest summaries and key points are always generated in English, even when input notes are in another language.
 Digest input supports markdown images (`![alt](./image.png)`); missing or unsupported local images are skipped with a warning.
 
@@ -108,6 +112,17 @@ proma merge --project ./acme --auto-merge
 proma report --project ./acme --period weekly
 proma report --project ./acme --period weekly --dry-run
 
+# import action discovery
+proma import --project ./acme --server slack --list-actions
+proma import --project ./acme --server slack --list-actions --verbose
+
+# import tool call
+proma import --project ./acme --server slack --tool fetch_thread --args '{"channel":"C123","thread_ts":"1710.123"}'
+proma import --project ./acme --server slack --tool fetch_thread --args '{"channel":"C123"}' --output ./acme/imports/slack-thread.md
+
+# handoff from import -> digest
+proma digest --project ./acme --input ./acme/imports/2026-03-12_slack_fetch-thread.md
+
 # report with explicit topic inputs + base reports
 proma report --project ./acme --period weekly \
   --input ./acme/topics/planning/release-readiness.md \
@@ -122,6 +137,9 @@ Optional flags:
 - `--verbose`: enable detailed debug logs.
 - `--dry-run`: skip AI requests and file writes.
 - `--auto-merge`: for `merge` only, auto-apply proposed merges without confirmation (diff previews are still printed).
+- `--server`: for `import` only, selects the MCP server from project config.
+- `--list-actions`: for `import` only, lists MCP actions for the selected server.
+- `--tool <name>` + `--args <json>`: for `import` only, executes one MCP tool call with JSON object arguments.
 
 Note: the digest flow uses OpenAI Structured Outputs (`json_schema`) and fails fast if the selected model does not support it.
 
@@ -130,6 +148,7 @@ Note: the digest flow uses OpenAI Structured Outputs (`json_schema`) and fails f
 `--project` is the root output directory.
 
 - Raw digest notes: `<project>/notes/<category>_<YYYY-MM-DD>_<index>.md`
+- Imported raw markdown: `<project>/imports/<YYYY-MM-DD>_<server>_<tool>.md` (collision fallback: `_2`, `_3`, ...)
 - Topic files from `merge`: `<project>/topics/<category>/<topic-slug>.md`
 - Reports: `<project>/reports/<YYYY-MM-DD>_<period>.md` (collision fallback: `_2`, `_3`, ...)
 
@@ -172,9 +191,12 @@ Generated markdown sections:
 
 Project config override:
 
-- You can extend digest/reference sources with a project config module in your project root.
+- Commands discover config from the current working directory (repo root where you run `proma`), not from `--project`.
+- You can extend digest/reference sources with a project config module in that root.
 - File resolution precedence: `proma.config.ts` > `proma.config.mjs` > `proma.config.js`.
-- Config export must be a default object with `digest.allowedSources`.
+- Config export must be a default object. Supported keys:
+  - `digest.allowedSources`
+  - `mcp.<serverName>` with local server config (`type`, `command`)
 
 ```ts
 // proma.config.ts
@@ -182,10 +204,17 @@ export default {
   digest: {
     allowedSources: ["jira", "notion"],
   },
+  mcp: {
+    slack: {
+      type: "local",
+      command: ["bun", "./scripts/slack-mcp.ts"],
+    },
+  },
 };
 ```
 
 - Effective allowed sources are `defaults + custom` (union, lowercase, deduped).
+- `import --server <name>` is case-sensitive and fails when the server is missing.
 
 ## Logging
 

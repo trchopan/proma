@@ -7,6 +7,11 @@ export {
   writeDigestItems,
 } from "./storage/digest-notes";
 export {
+  type ImportedFile,
+  resolveImportOutputPath,
+  writeImportedMarkdown,
+} from "./storage/import-files";
+export {
   loadReportContext,
   resolveBaseReportFiles,
   resolveReportInputFiles,

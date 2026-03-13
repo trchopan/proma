@@ -15,6 +15,12 @@ export type ProjectConfig = {
   digest?: {
     allowedSources?: string[];
   };
+  mcp?: Record<string, McpLocalServerConfig>;
+};
+
+export type McpLocalServerConfig = {
+  type: "local";
+  command: string[];
 };
 
 function normalizeSources(values: string[]): string[] {
@@ -39,42 +45,90 @@ function validateProjectConfig(
     );
   }
 
+  const normalized: ProjectConfig = {};
+
   const digest = raw.digest;
-  if (typeof digest === "undefined") {
-    return {};
+  if (typeof digest !== "undefined") {
+    if (!isObject(digest)) {
+      throw new Error(
+        `Invalid project config at ${configPath}: digest must be an object`,
+      );
+    }
+
+    const allowedSources = digest.allowedSources;
+    if (typeof allowedSources === "undefined") {
+      normalized.digest = {};
+    } else {
+      if (!Array.isArray(allowedSources)) {
+        throw new Error(
+          `Invalid project config at ${configPath}: digest.allowedSources must be an array of strings`,
+        );
+      }
+
+      const hasNonString = allowedSources.some(
+        (value) => typeof value !== "string",
+      );
+      if (hasNonString) {
+        throw new Error(
+          `Invalid project config at ${configPath}: digest.allowedSources must be an array of strings`,
+        );
+      }
+
+      normalized.digest = {
+        allowedSources: normalizeSources(allowedSources as string[]),
+      };
+    }
   }
 
-  if (!isObject(digest)) {
-    throw new Error(
-      `Invalid project config at ${configPath}: digest must be an object`,
-    );
+  const mcp = raw.mcp;
+  if (typeof mcp !== "undefined") {
+    if (!isObject(mcp) || Array.isArray(mcp)) {
+      throw new Error(
+        `Invalid project config at ${configPath}: mcp must be an object keyed by server name`,
+      );
+    }
+
+    const servers: Record<string, McpLocalServerConfig> = {};
+
+    for (const [name, serverRaw] of Object.entries(mcp)) {
+      if (!isObject(serverRaw) || Array.isArray(serverRaw)) {
+        throw new Error(
+          `Invalid project config at ${configPath}: mcp.${name} must be an object`,
+        );
+      }
+
+      if (serverRaw.type !== "local") {
+        throw new Error(
+          `Invalid project config at ${configPath}: mcp.${name}.type must be "local"`,
+        );
+      }
+
+      const command = serverRaw.command;
+      if (!Array.isArray(command) || command.length === 0) {
+        throw new Error(
+          `Invalid project config at ${configPath}: mcp.${name}.command must be a non-empty string array`,
+        );
+      }
+
+      const normalizedCommand = command.map((entry) =>
+        typeof entry === "string" ? entry.trim() : "",
+      );
+      if (normalizedCommand.some((entry) => entry.length === 0)) {
+        throw new Error(
+          `Invalid project config at ${configPath}: mcp.${name}.command must be a non-empty string array`,
+        );
+      }
+
+      servers[name] = {
+        type: "local",
+        command: normalizedCommand,
+      };
+    }
+
+    normalized.mcp = servers;
   }
 
-  const allowedSources = digest.allowedSources;
-  if (typeof allowedSources === "undefined") {
-    return { digest: {} };
-  }
-
-  if (!Array.isArray(allowedSources)) {
-    throw new Error(
-      `Invalid project config at ${configPath}: digest.allowedSources must be an array of strings`,
-    );
-  }
-
-  const hasNonString = allowedSources.some(
-    (value) => typeof value !== "string",
-  );
-  if (hasNonString) {
-    throw new Error(
-      `Invalid project config at ${configPath}: digest.allowedSources must be an array of strings`,
-    );
-  }
-
-  return {
-    digest: {
-      allowedSources: normalizeSources(allowedSources as string[]),
-    },
-  };
+  return normalized;
 }
 
 async function loadConfigModule(configPath: string): Promise<ProjectConfig> {
@@ -135,4 +189,16 @@ export function resolveOpenAiChatCompletionsUrl(): string {
   }
 
   return `${normalizedBaseUrl}/v1/chat/completions`;
+}
+
+export function resolveMcpServer(
+  config: ProjectConfig,
+  name: string,
+): McpLocalServerConfig {
+  const server = config.mcp?.[name];
+  if (!server) {
+    throw new Error(`Unknown MCP server: ${name}`);
+  }
+
+  return server;
 }

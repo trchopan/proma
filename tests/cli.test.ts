@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
   parseDigestCommandArgs,
+  parseImportCommandArgs,
   parseMergeCommandArgs,
   parseReportCommandArgs,
   renderDiffPreview,
@@ -181,6 +182,88 @@ test("parseReportCommandArgs rejects invalid period", () => {
   expect(() =>
     parseReportCommandArgs(["--project", "apollo", "--period", "quarterly"]),
   ).toThrow("Invalid --period value");
+});
+
+test("parseImportCommandArgs parses action-list mode", () => {
+  const parsed = parseImportCommandArgs([
+    "--project",
+    "apollo",
+    "--server",
+    "slack",
+    "--list-actions",
+  ]);
+
+  expect(parsed).toEqual({
+    project: "apollo",
+    server: "slack",
+    listActions: true,
+    tool: undefined,
+    args: {},
+    output: undefined,
+    verbose: false,
+    dryRun: false,
+  });
+});
+
+test("parseImportCommandArgs parses tool-call mode with args and output", () => {
+  const parsed = parseImportCommandArgs([
+    "--project",
+    "apollo",
+    "--server",
+    "slack",
+    "--tool",
+    "fetch_thread",
+    "--args",
+    '{"channel":"C123","thread":"123.456"}',
+    "--output",
+    "./imports/thread.md",
+  ]);
+
+  expect(parsed).toEqual({
+    project: "apollo",
+    server: "slack",
+    listActions: false,
+    tool: "fetch_thread",
+    args: {
+      channel: "C123",
+      thread: "123.456",
+    },
+    output: "./imports/thread.md",
+    verbose: false,
+    dryRun: false,
+  });
+});
+
+test("parseImportCommandArgs enforces exclusive mode selection", () => {
+  expect(() =>
+    parseImportCommandArgs([
+      "--project",
+      "apollo",
+      "--server",
+      "slack",
+      "--list-actions",
+      "--tool",
+      "fetch_thread",
+    ]),
+  ).toThrow("exactly one of");
+
+  expect(() =>
+    parseImportCommandArgs(["--project", "apollo", "--server", "slack"]),
+  ).toThrow("exactly one of");
+});
+
+test("parseImportCommandArgs rejects --args without --tool", () => {
+  expect(() =>
+    parseImportCommandArgs([
+      "--project",
+      "apollo",
+      "--server",
+      "slack",
+      "--list-actions",
+      "--args",
+      "{}",
+    ]),
+  ).toThrow("--args can only be used with --tool");
 });
 
 test("runCli returns readable error for missing args", async () => {
@@ -707,6 +790,176 @@ test("runCli report with --dry-run does not write report file", async () => {
   expect(output).toContain(
     "Dry run complete. Would write generated report markdown file.",
   );
+});
+
+test("runCli import lists actions", async () => {
+  const output: string[] = [];
+
+  const exitCode = await runCli(
+    ["import", "--project", "apollo", "--server", "slack", "--list-actions"],
+    {
+      loadProjectConfig: async () => ({
+        mcp: {
+          slack: {
+            type: "local",
+            command: ["bun", "./fake-mcp.ts"],
+          },
+        },
+      }),
+      listMcpTools: async () => [
+        {
+          name: "fetch_thread",
+          description: "Fetch Slack thread as markdown",
+        },
+      ],
+      renderActionList: () => "- fetch_thread: Fetch Slack thread as markdown",
+    },
+    {
+      out: (message) => {
+        output.push(message);
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(output).toContain("Listing actions for MCP server: slack");
+  expect(output).toContain("- fetch_thread: Fetch Slack thread as markdown");
+});
+
+test("runCli import tool call writes markdown output", async () => {
+  const output: string[] = [];
+
+  const exitCode = await runCli(
+    [
+      "import",
+      "--project",
+      "apollo",
+      "--server",
+      "slack",
+      "--tool",
+      "fetch_thread",
+      "--args",
+      '{"channel":"C123"}',
+    ],
+    {
+      loadProjectConfig: async () => ({
+        mcp: {
+          slack: {
+            type: "local",
+            command: ["bun", "./fake-mcp.ts"],
+          },
+        },
+      }),
+      resolveImportOutputPath: async () => "/tmp/apollo/imports/slack.md",
+      callMcpTool: async () => ({
+        content: [{ type: "text", text: "Imported" }],
+      }),
+      renderImportedMarkdown: () => "# Imported",
+      writeImportedMarkdown: async () => ({
+        absolutePath: "/tmp/apollo/imports/slack.md",
+        relativePath: "imports/slack.md",
+      }),
+    },
+    {
+      out: (message) => {
+        output.push(message);
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(output).toContain(
+    "Calling MCP tool 'fetch_thread' on server 'slack'...",
+  );
+  expect(output).toContain(
+    "Wrote imported markdown: /tmp/apollo/imports/slack.md",
+  );
+});
+
+test("runCli import dry-run avoids MCP calls and writes", async () => {
+  const output: string[] = [];
+
+  const exitCode = await runCli(
+    [
+      "import",
+      "--project",
+      "apollo",
+      "--server",
+      "slack",
+      "--tool",
+      "fetch_thread",
+      "--dry-run",
+    ],
+    {
+      loadProjectConfig: async () => ({
+        mcp: {
+          slack: {
+            type: "local",
+            command: ["bun", "./fake-mcp.ts"],
+          },
+        },
+      }),
+      resolveImportOutputPath: async () => "/tmp/apollo/imports/slack.md",
+      callMcpTool: async () => {
+        throw new Error("callMcpTool should not be called");
+      },
+      writeImportedMarkdown: async () => {
+        throw new Error("writeImportedMarkdown should not be called");
+      },
+    },
+    {
+      out: (message) => {
+        output.push(message);
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(output).toContain(
+    "Dry run: would write imported markdown to /tmp/apollo/imports/slack.md",
+  );
+});
+
+test("runCli import loads config from current working directory", async () => {
+  let capturedConfigRoot = "";
+
+  const exitCode = await runCli(
+    ["import", "--project", "tmp/acme", "--server", "slack", "--list-actions"],
+    {
+      loadProjectConfig: async (projectRoot) => {
+        capturedConfigRoot = projectRoot;
+        return {
+          mcp: {
+            slack: {
+              type: "local",
+              command: ["bun", "./fake-mcp.ts"],
+            },
+          },
+        };
+      },
+      listMcpTools: async () => [],
+    },
+    {
+      out: () => {
+        return;
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(capturedConfigRoot).toBe(path.resolve(process.cwd()));
 });
 
 test("renderDiffPreview renders unified hunks and change counts", () => {
