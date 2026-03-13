@@ -10,29 +10,35 @@ import {
   parseMergeCommandArgs,
   parseReportCommandArgs,
   type ReportArgs,
-} from "./cli/args";
+} from "$/cli/args";
 import {
   colorizeDiffPreview,
   renderDiffPreview,
   supportsAnsiColor,
-} from "./cli/diff-preview";
-import { loadInputImages } from "./cli/image-loader";
+} from "$/cli/diff-preview";
+import { loadInputImages } from "$/cli/image-loader";
 import {
   loadProjectConfig,
   resolveDigestAllowedSources,
   resolveGithubHost,
   resolveMcpServer,
-} from "./config";
+} from "$/core/config";
+import { createLogger, type Logger } from "$/core/logging";
+import { createBuiltInPromptRegistry } from "$/core/prompting/registry";
+import type { PromptRegistry } from "$/core/prompting/types";
+import { validatePromptRegistry } from "$/core/prompting/validate";
 import {
   generateDigestItems,
   generateMergeContent,
   generateTopicTarget,
-} from "./digest/generate";
+} from "$/domain/digest/generate";
 import type {
   DigestInputImage,
   MergeContentInput,
   MergeContentResult,
-} from "./digest/types";
+} from "$/domain/digest/types";
+import { governTags } from "$/domain/merge/topic-merge";
+import { generateReport, renderReportMarkdown } from "$/domain/report/report";
 import {
   collectCategoryTagPool,
   type ImportedFile,
@@ -49,16 +55,17 @@ import {
   writeImportedMarkdown,
   writePreparedTopicMerge,
   writeReportFile,
-} from "./files";
-import { callGithubTool, listGithubTools } from "./import/github-client";
-import { callMcpTool, listMcpTools, type McpTool } from "./import/mcp-client";
-import { renderActionList, renderImportedMarkdown } from "./import/transform";
-import { createLogger, type Logger } from "./logging";
-import { createBuiltInPromptRegistry } from "./prompting/registry";
-import type { PromptRegistry } from "./prompting/types";
-import { validatePromptRegistry } from "./prompting/validate";
-import { generateReport, renderReportMarkdown } from "./report";
-import { governTags } from "./services/topic-merge";
+} from "$/files";
+import { callGithubTool, listGithubTools } from "$/integrations/github/client";
+import {
+  callMcpTool,
+  listMcpTools,
+  type McpTool,
+} from "$/integrations/mcp/client";
+import {
+  renderActionList,
+  renderImportedMarkdown,
+} from "$/integrations/mcp/transform";
 
 export {
   parseDigestCommandArgs,

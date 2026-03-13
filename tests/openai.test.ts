@@ -1,6 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
 
-import { type ChatResponseFormat, createChatCompletion } from "$/ai/openai";
+import {
+  type ChatResponseFormat,
+  createChatCompletion,
+} from "$/integrations/ai/openai";
 
 const originalFetch = globalThis.fetch;
 const originalApiKey = process.env.OPENAI_API_KEY;

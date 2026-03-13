@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
-import { createBuiltInPromptRegistry } from "$/prompting/registry";
+import { createBuiltInPromptRegistry } from "$/core/prompting/registry";
 import {
   generateReport,
   parseReportResponse,
   REPORT_RESPONSE_SCHEMA,
   renderReportMarkdown,
-} from "$/report";
+} from "$/domain/report/report";
 
 test("parseReportResponse parses valid structured payload", () => {
   const report = parseReportResponse(

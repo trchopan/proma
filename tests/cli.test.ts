@@ -11,7 +11,7 @@ import {
   renderDiffPreview,
   runCli,
 } from "$/cli";
-import type { DigestItem } from "$/digest/types";
+import type { DigestItem } from "$/domain/digest/types";
 
 test("parseDigestCommandArgs parses required and optional args", () => {
   const parsed = parseDigestCommandArgs([

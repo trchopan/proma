@@ -6,12 +6,16 @@ import {
   buildGhApiCommandArgs,
   callGithubTool,
   listGithubTools,
-} from "$/import/github-client";
-import { renderActionList, renderImportedMarkdown } from "$/import/transform";
+} from "$/integrations/github/client";
+
+import {
+  renderActionList,
+  renderImportedMarkdown,
+} from "$/integrations/mcp/transform";
 import {
   resolveImportOutputPath,
   writeImportedMarkdown,
-} from "$/storage/import-files";
+} from "$/storage/import/import-files";
 
 test("renderActionList renders concise action output", () => {
   const output = renderActionList({
