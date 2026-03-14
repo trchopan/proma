@@ -202,6 +202,18 @@ test("generateDigestItems passes strict structured output format", async () => {
 
   expect(promptText).toContain("You classify notes into digest items");
   expect(promptText).toContain("slack, wiki, git, document");
+  expect(promptText).toContain(
+    "When source content includes explicit ownership/actor identities",
+  );
+  expect(promptText).toContain(
+    "Timeline entries must represent substantive events",
+  );
+  expect(promptText).toContain(
+    "Do not include ingestion or tooling metadata in timeline",
+  );
+  expect(promptText).toContain(
+    "If no substantive dated event is present, return an empty timeline array.",
+  );
   expect(promptText).toContain("Some input");
 });
 

@@ -187,6 +187,10 @@ Topic file behavior:
   - `discussion`: `Summary`, `Context/Background`, `Resolution`, `Participants`, `References`
   - `research`: `Summary`, `Problem Statement`, `Research Plan`, `Key Findings`, `Person in Charge`, `References`
   - `planning`: `Summary`, `Objectives / Success Criteria`, `Scope`, `Deliverables`, `Plan`, `Timeline`, `Teams/Individuals Involved`, `References`
+- Planning participant identity formatting (when handles are available):
+  - full identity: `Display Name (platform:identity handle)`
+  - handle-only identity: `(platform:identity handle)`
+  - platform label follows source naming (for example `git`, `slack`)
 - Merge routes each digest note to exactly one primary topic target.
 - Merge pre-ranks candidates deterministically and sends only the top 8 candidates to routing.
 - Merge applies semantic content refinement to reduce unrelated/duplicated key points and timeline entries, with deterministic fallback on failure.
