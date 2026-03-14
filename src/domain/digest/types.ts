@@ -55,6 +55,10 @@ export type TopicRoutingCandidate = {
   keyPoints: string[];
   timeline: string[];
   references: DigestReference[];
+  digestedCount?: number;
+  updatedAt?: string;
+  timeboxes?: string[];
+  anchors?: string[];
 };
 
 export type TopicRoutingTarget = {
