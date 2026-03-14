@@ -24,7 +24,11 @@ function buildDigestUserText(
     "Return concise and meaningful digest items based on intent.",
     "Prefer fewer, meaningful digest items and avoid over-fragmenting.",
     "Always write summary, keyPoints, and timeline context in English, even if the user content is in another language.",
+    "When source content includes explicit ownership/actor identities (for example author, merged_by, assignee, owner/PIC, or @mentions), preserve those identity cues in keyPoints.",
     "Timeline is optional when date information is unknown.",
+    "Timeline entries must represent substantive events from the underlying project content (for example: decisions, incidents, milestones, findings, or completed actions).",
+    "Do not include ingestion or tooling metadata in timeline (for example: import/search/sync/query operations, note creation, or file processing steps).",
+    "If no substantive dated event is present, return an empty timeline array.",
     "When timeline entries are present, each entry must use this strict format: YYYY-MM-DD - <context>.",
     `Each item must include a source value from: ${allowedSourcesText}.`,
     "If references are unknown, return an empty array.",
@@ -202,6 +206,9 @@ export function createBuiltInPromptRegistry(options?: {
               : [
                   "Return sections as: summary, objectivesSuccessCriteria, scope, deliverables, plan, timeline, teamsIndividualsInvolved, references, tags.",
                   "Timeline entries must stay in strict format: YYYY-MM-DD - <context>.",
+                  "Teams/Individuals Involved must include explicitly named owners/actors from incoming content whenever present.",
+                  "Format people with identity handles as either 'Display Name (platform:identity handle)' or '(platform:identity handle)'.",
+                  "Use source-based platform labels (for example git, slack).",
                   "Objectives / Success Criteria should be concrete and measurable when possible.",
                 ];
         const prompt = [

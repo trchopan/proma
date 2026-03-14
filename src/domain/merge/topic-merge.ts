@@ -252,6 +252,176 @@ function mergeReferences(
   return sortReferences([...mergedReferenceMap.values()]);
 }
 
+function normalizeIdentityHandle(input: string): string {
+  return input
+    .trim()
+    .replace(/^@+/, "")
+    .replace(/[.,;:!?]+$/g, "");
+}
+
+function normalizeIdentityPlatform(source: DigestSource): string {
+  return source.trim().toLowerCase();
+}
+
+function formatIdentity(options: {
+  platform: string;
+  handle: string;
+  displayName?: string;
+}): string {
+  const handle = normalizeIdentityHandle(options.handle);
+  if (handle.length === 0) {
+    return "";
+  }
+
+  const platform = options.platform.trim().toLowerCase();
+  if (platform.length === 0) {
+    return "";
+  }
+
+  const displayName = options.displayName?.trim();
+  if (displayName && displayName.length > 0) {
+    return `${displayName} (${platform}:${handle})`;
+  }
+
+  return `(${platform}:${handle})`;
+}
+
+function normalizeParticipantEntry(
+  entry: string,
+  fallbackPlatform: string,
+): string {
+  const trimmed = entry.trim();
+  if (trimmed.length === 0 || trimmed.toLowerCase() === "none") {
+    return "";
+  }
+
+  const fullIdentity = trimmed.match(
+    /^(.+?)\s*\(\s*([a-z0-9._-]+)\s*:\s*([A-Za-z0-9._-]+)\s*\)$/i,
+  );
+  if (fullIdentity?.[1] && fullIdentity[2] && fullIdentity[3]) {
+    return formatIdentity({
+      displayName: fullIdentity[1],
+      platform: fullIdentity[2],
+      handle: fullIdentity[3],
+    });
+  }
+
+  const handleOnlyIdentity = trimmed.match(
+    /^\(\s*([a-z0-9._-]+)\s*:\s*([A-Za-z0-9._-]+)\s*\)$/i,
+  );
+  if (handleOnlyIdentity?.[1] && handleOnlyIdentity[2]) {
+    return formatIdentity({
+      platform: handleOnlyIdentity[1],
+      handle: handleOnlyIdentity[2],
+    });
+  }
+
+  const nameWithHandle = trimmed.match(
+    /^(.+?)\s*\(\s*@?([A-Za-z0-9._-]+)\s*\)$/,
+  );
+  if (nameWithHandle?.[1] && nameWithHandle[2]) {
+    return formatIdentity({
+      displayName: nameWithHandle[1],
+      platform: fallbackPlatform,
+      handle: nameWithHandle[2],
+    });
+  }
+
+  const handleOnly = trimmed.match(/^@?([A-Za-z0-9._-]+)$/);
+  if (handleOnly?.[1]) {
+    return formatIdentity({
+      platform: fallbackPlatform,
+      handle: handleOnly[1],
+    });
+  }
+
+  return trimmed;
+}
+
+function extractPlanningParticipants(item: DigestItem): string[] {
+  const platform = normalizeIdentityPlatform(item.source);
+  const participantsByIdentity = new Map<string, string>();
+  const sources = [item.summary, ...item.keyPoints].filter(
+    (value) => value.trim().length > 0,
+  );
+
+  const upsertParticipant = (handle: string, displayName?: string) => {
+    const normalizedHandle = normalizeIdentityHandle(handle);
+    if (normalizedHandle.length === 0) {
+      return;
+    }
+
+    const normalized = formatIdentity({
+      platform,
+      handle: normalizedHandle,
+      displayName,
+    });
+    if (normalized.length === 0) {
+      return;
+    }
+
+    const key = `${platform}:${normalizedHandle.toLowerCase()}`;
+    const existing = participantsByIdentity.get(key);
+    if (!existing) {
+      participantsByIdentity.set(key, normalized);
+      return;
+    }
+
+    if (existing.startsWith("(") && !normalized.startsWith("(")) {
+      participantsByIdentity.set(key, normalized);
+    }
+  };
+
+  for (const sourceText of sources) {
+    const explicitNamePattern =
+      /([A-Za-z][A-Za-z0-9.'-]*(?:\s+[A-Za-z][A-Za-z0-9.'-]*){0,5})\s*\(\s*@?([A-Za-z0-9._-]+)\s*\)/g;
+    for (const match of sourceText.matchAll(explicitNamePattern)) {
+      if (match[1] && match[2]) {
+        upsertParticipant(match[2], match[1]);
+      }
+    }
+
+    const roleHandlePattern =
+      /(?:merged by|merged_by|author|assignee|owner|pic)\s*[:-]?\s*(?:([A-Za-z][A-Za-z0-9.'-]*(?:\s+[A-Za-z][A-Za-z0-9.'-]*){0,5})\s*\(\s*@?([A-Za-z0-9][A-Za-z0-9._-]*)\s*\)|@?([A-Za-z0-9][A-Za-z0-9._-]*))/gi;
+    for (const match of sourceText.matchAll(roleHandlePattern)) {
+      const displayName = match[1]?.trim();
+      const handle = (match[2] ?? match[3])?.trim();
+      if (!handle) {
+        continue;
+      }
+
+      const likelyHandle =
+        /[-_.\d]/.test(handle) || handle !== handle.toLowerCase();
+      if (!likelyHandle && !sourceText.includes(`@${handle}`)) {
+        continue;
+      }
+
+      upsertParticipant(handle, displayName);
+    }
+
+    const mentionPattern = /(^|[^\w])@([A-Za-z0-9._-]+)/g;
+    for (const match of sourceText.matchAll(mentionPattern)) {
+      if (match[2]) {
+        upsertParticipant(match[2]);
+      }
+    }
+  }
+
+  return [...participantsByIdentity.values()];
+}
+
+function normalizePlanningParticipants(
+  values: string[],
+  fallbackSource: DigestSource,
+): string[] {
+  const platform = normalizeIdentityPlatform(fallbackSource);
+  const normalized = values
+    .map((value) => normalizeParticipantEntry(value, platform))
+    .filter((value) => value.length > 0);
+
+  return uniqueOrdered(normalized);
+}
+
 function topicDataFromDigestItem(
   category: DigestCategory,
   item: DigestItem,
@@ -284,7 +454,7 @@ function topicDataFromDigestItem(
     deliverables: [],
     plan: [],
     timeline: [...new Set(item.timeline)].sort((a, b) => a.localeCompare(b)),
-    teamsIndividualsInvolved: [],
+    teamsIndividualsInvolved: extractPlanningParticipants(item),
     references: sortReferences(item.references),
   };
 }
@@ -470,6 +640,17 @@ export function buildTopicMergeContent(options: {
       ? topicDataFromMergeContent(options.mergeContent)
       : topicDataFromDigestItem(options.category, options.item);
   const mergedCanonical = mergeTopicData(options.category, existing, incoming);
+  if (options.category === "planning") {
+    const planning = mergedCanonical as Extract<
+      TopicDataByCategory,
+      { objectivesSuccessCriteria: string[] }
+    >;
+    const extractedParticipants = extractPlanningParticipants(options.item);
+    planning.teamsIndividualsInvolved = normalizePlanningParticipants(
+      [...planning.teamsIndividualsInvolved, ...extractedParticipants],
+      options.item.source,
+    );
+  }
   const stableContent = buildTopicContent({
     existingMetadata: parsed.metadata,
     category: options.category,
