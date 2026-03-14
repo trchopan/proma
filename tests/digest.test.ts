@@ -388,6 +388,11 @@ test("generateTopicTarget passes candidate slugs and strict schema", async () =>
 
   expect(promptText).toContain("You route digest items to topic files");
   expect(promptText).toContain("release-readiness");
+  expect(promptText).toContain("workstream-level canonical topics");
+  expect(promptText).toContain("Treat timebox as a hard split key");
+  expect(promptText).toContain(
+    "Treat product/project identity as a hard split key",
+  );
 });
 
 test("parseMergeContentResponse validates canonical merge payload", () => {

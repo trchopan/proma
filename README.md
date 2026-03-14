@@ -192,6 +192,9 @@ Topic file behavior:
   - handle-only identity: `(platform:identity handle)`
   - platform label follows source naming (for example `git`, `slack`)
 - Merge routes each digest note to exactly one primary topic target.
+- Merge prefers durable workstream-level topics over note/PR-specific topic files across all sources (`git`, `slack`, `wiki`, `document`).
+- Timebox signals (for example `release/x.y.z`, `sprint-<n>`, `Qn-YYYY`) are treated as hard split boundaries when present.
+- Project/product identity signals (for example `project-atlas-api`, `project-orion-web`) are treated as hard split boundaries to avoid cross-project topic contamination.
 - Merge pre-ranks candidates deterministically and sends only the top 8 candidates to routing.
 - Merge applies semantic content refinement to reduce unrelated/duplicated key points and timeline entries, with deterministic fallback on failure.
 - Repeated ingestion of already-merged references becomes a no-op (`No topic change`).

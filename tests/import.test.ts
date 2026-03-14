@@ -131,7 +131,7 @@ test("callGithubTool validates required args before running gh", async () => {
 
 test("buildGhApiCommandArgs always forces GET and supports host", () => {
   const args = buildGhApiCommandArgs({
-    endpoint: "/repos/LINE-FE/media-portal-fe/pulls",
+    endpoint: "/repos/acme/project-orion-web/pulls",
     host: "git.linecorp.com",
     query: {
       state: "all",
@@ -142,7 +142,7 @@ test("buildGhApiCommandArgs always forces GET and supports host", () => {
 
   expect(args).toEqual([
     "api",
-    "/repos/LINE-FE/media-portal-fe/pulls",
+    "/repos/acme/project-orion-web/pulls",
     "--method",
     "GET",
     "--hostname",
@@ -161,8 +161,8 @@ test("callGithubTool validates state enum for list tools", async () => {
     callGithubTool({
       tool: "prs_list",
       args: {
-        owner: "LINE-FE",
-        repo: "media-portal-fe",
+        owner: "acme",
+        repo: "project-orion-web",
         state: "invalid",
       },
     }),

@@ -40,6 +40,7 @@ import type {
 import { governTags } from "$/domain/merge/topic-merge";
 import { generateReport, renderReportMarkdown } from "$/domain/report/report";
 import {
+  chooseConsolidatedTarget,
   collectCategoryTagPool,
   type ImportedFile,
   listPendingDigestItems,
@@ -88,6 +89,7 @@ type CliDependencies = {
   markDigestItemMerged: typeof markDigestItemMerged;
   listTopicCandidates: typeof listTopicCandidates;
   rankTopicCandidates: typeof rankTopicCandidates;
+  chooseConsolidatedTarget: typeof chooseConsolidatedTarget;
   collectCategoryTagPool: typeof collectCategoryTagPool;
   prepareTopicMerge: typeof prepareTopicMerge;
   writePreparedTopicMerge: typeof writePreparedTopicMerge;
@@ -362,7 +364,7 @@ async function runMergeCommand(
       candidates,
       8,
     );
-    const target = await deps.generateTopicTarget(
+    const generatedTarget = await deps.generateTopicTarget(
       digestNote.item,
       rankedCandidates,
       {
@@ -372,8 +374,14 @@ async function runMergeCommand(
         dryRun: parsed.dryRun,
       },
     );
+    const target = deps.chooseConsolidatedTarget({
+      item: digestNote.item,
+      rankedCandidates,
+      aiTarget: generatedTarget,
+    });
     await logger.debug("merge.target", "Generated topic routing target", {
-      targetAction: target.action,
+      targetAction: generatedTarget.action,
+      finalAction: target.action,
       targetSlug: target.slug ?? null,
     });
     const tagPool = deps.collectCategoryTagPool(candidates);
@@ -787,6 +795,7 @@ export async function runCli(
     markDigestItemMerged,
     listTopicCandidates,
     rankTopicCandidates,
+    chooseConsolidatedTarget,
     collectCategoryTagPool,
     prepareTopicMerge,
     writePreparedTopicMerge,

@@ -692,6 +692,94 @@ test("runCli merge with --dry-run does not write files", async () => {
   expect(output).toContain("Would mark 1 digest note(s) as merged.");
 });
 
+test("runCli merge promotes create_new to update_existing for strong same-timebox match", async () => {
+  const output: string[] = [];
+  let capturedTargetAction = "";
+  let capturedTargetSlug = "";
+  const mockItem: DigestItem = {
+    category: "planning",
+    source: "git",
+    summary: "Update project-orion-web dependencies in release/1.12.0",
+    keyPoints: ["project-orion-web release stream merged"],
+    timeline: ["2026-03-12 - PR merged"],
+    references: [
+      {
+        source: "git",
+        link: "https://git.example.com/org/project-orion-web/pull/2601",
+      },
+    ],
+  };
+
+  const exitCode = await runCli(
+    ["merge", "--project", "apollo", "--dry-run"],
+    {
+      listPendingDigestItems: async () => [
+        {
+          item: mockItem,
+          absolutePath: "/tmp/apollo/notes/planning_2026-03-12_1.md",
+          relativePath: "notes/planning_2026-03-12_1.md",
+        },
+      ],
+      listTopicCandidates: async () => [
+        {
+          slug: "project-orion-web-deps-release-1-12-0",
+          topic: "Project Orion Web dependency updates (release/1.12.0)",
+          tags: ["dependencies", "release-1-12-0", "project-orion-web"],
+          summary: "Consolidated XLT updates for release/1.12.0",
+          keyPoints: ["Track dependency updates"],
+          timeline: ["2026-03-04 - Initial XLT merge"],
+          references: [
+            {
+              source: "git",
+              link: "https://git.example.com/org/project-orion-web/pull/2592",
+            },
+          ],
+          digestedCount: 3,
+          updatedAt: "2026-03-12T00:00:00.000Z",
+          timeboxes: ["release-1-12-0"],
+          anchors: ["project-orion-web"],
+        },
+      ],
+      rankTopicCandidates: (_item, candidates) => candidates,
+      collectCategoryTagPool: () => ["xlt", "release-1-12-0"],
+      generateTopicTarget: async () => ({
+        action: "create_new",
+        shortDescription: "new-xlt-note",
+        topic: "New XLT Note",
+        tags: ["xlt"],
+      }),
+      prepareTopicMerge: async (options) => {
+        capturedTargetAction = options.target.action;
+        capturedTargetSlug = options.target.slug ?? "";
+        return {
+          targetPath:
+            "/tmp/apollo/topics/planning/project-orion-web-deps-release-1-12-0.md",
+          relativeTargetPath:
+            "topics/planning/project-orion-web-deps-release-1-12-0.md",
+          currentContent: "before",
+          proposedContent: "before",
+          isNew: false,
+          hasChanges: false,
+        };
+      },
+      confirmMerge: async () => true,
+    },
+    {
+      out: (message) => {
+        output.push(message);
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(capturedTargetAction).toBe("update_existing");
+  expect(capturedTargetSlug).toBe("project-orion-web-deps-release-1-12-0");
+  expect(output).toContain("Found 1 pending digest file(s).");
+});
+
 test("runCli merge with --auto-merge prints diff and skips confirmation", async () => {
   const output: string[] = [];
   const mockItem: DigestItem = {

@@ -46,6 +46,10 @@ function buildMergeCandidateText(context: {
     keyPoints: string[];
     timeline: string[];
     references: Array<{ source: string; link: string }>;
+    digestedCount?: number;
+    updatedAt?: string;
+    timeboxes?: string[];
+    anchors?: string[];
   }>;
 }): string {
   if (context.candidates.length === 0) {
@@ -71,7 +75,20 @@ function buildMergeCandidateText(context: {
               .map((reference) => `${reference.source}: ${reference.link}`)
               .join(" | ")
           : "none";
-      return `- slug: ${candidate.slug}; topic: ${candidate.topic}; tags: ${tagsText}; summary: ${candidate.summary}; keyPoints: ${keyPointsText}; timeline: ${timelineText}; references: ${referencesText}`;
+      const timeboxesText =
+        candidate.timeboxes && candidate.timeboxes.length > 0
+          ? candidate.timeboxes.join(", ")
+          : "none";
+      const digestedCountText = String(candidate.digestedCount ?? 0);
+      const updatedAtText =
+        candidate.updatedAt && candidate.updatedAt.length > 0
+          ? candidate.updatedAt
+          : "unknown";
+      const anchorsText =
+        candidate.anchors && candidate.anchors.length > 0
+          ? candidate.anchors.join(", ")
+          : "none";
+      return `- slug: ${candidate.slug}; topic: ${candidate.topic}; tags: ${tagsText}; summary: ${candidate.summary}; keyPoints: ${keyPointsText}; timeline: ${timelineText}; references: ${referencesText}; timeboxes: ${timeboxesText}; anchors: ${anchorsText}; digestedCount: ${digestedCountText}; updatedAt: ${updatedAtText}`;
     })
     .join("\n");
 }
@@ -142,7 +159,11 @@ export function createBuiltInPromptRegistry(options?: {
         const prompt = [
           "Route this digest item into exactly one primary topic file.",
           "Prefer update_existing when a candidate clearly matches semantic scope.",
+          "Default to workstream-level canonical topics, not note-level or PR-level topic files.",
+          "Across all sources (git/slack/wiki/document), reuse an existing topic when domain + workstream + timebox are aligned.",
+          "Treat product/project identity as a hard split key (for example project-atlas-api vs project-orion-web). Do not merge across distinct identities.",
           "Use create_new only when no candidate is a close match.",
+          "Treat timebox as a hard split key when present (for example release/sprint/quarter). Do not merge across different timeboxes.",
           "Avoid cross-topic contamination: do not mix policy decisions with release plan/schedule execution topics unless the digest is genuinely about both.",
           "Prefer reusing existing tags from candidates when possible; only add new tags when required.",
           "For create_new, provide shortDescription suitable for a kebab-case filename (max 100 characters after normalization).",

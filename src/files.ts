@@ -11,6 +11,7 @@ export {
   writeImportedMarkdown,
 } from "$/storage/import/import-files";
 export {
+  chooseConsolidatedTarget,
   collectCategoryTagPool,
   listTopicCandidates,
   type PreparedTopicMerge,

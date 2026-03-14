@@ -6,6 +6,7 @@ import path from "node:path";
 import type { DigestItem, TopicRoutingTarget } from "$/domain/digest/types";
 import {
   allocateNextIndex,
+  chooseConsolidatedTarget,
   collectCategoryTagPool,
   listPendingDigestItems,
   listTopicCandidates,
@@ -166,6 +167,10 @@ test("listTopicCandidates reads topic front matter", async () => {
         keyPoints: [],
         timeline: [],
         references: [],
+        digestedCount: 0,
+        updatedAt: "2026-03-09T00:00:00.000Z",
+        timeboxes: [],
+        anchors: [],
       },
     ]);
   });
@@ -190,6 +195,10 @@ test("rankTopicCandidates prioritizes overlapping references and tokens", () => 
         keyPoints: ["Assign PIC"],
         timeline: ["2026-03-10 - Start execution"],
         references: [],
+        digestedCount: 1,
+        updatedAt: "2026-03-10T00:00:00.000Z",
+        timeboxes: [],
+        anchors: [],
       },
       {
         slug: "release-cadence-policy",
@@ -199,12 +208,173 @@ test("rankTopicCandidates prioritizes overlapping references and tokens", () => 
         keyPoints: ["Skip when no agenda"],
         timeline: ["2026-03-13 - Publish decision"],
         references: [{ source: "slack", link: "https://example.com/thread" }],
+        digestedCount: 2,
+        updatedAt: "2026-03-13T00:00:00.000Z",
+        timeboxes: [],
+        anchors: [],
       },
     ],
     8,
   );
 
   expect(ranked[0]?.slug).toBe("release-cadence-policy");
+});
+
+test("rankTopicCandidates enforces hard timebox preference when present", () => {
+  const ranked = rankTopicCandidates(
+    {
+      category: "planning",
+      source: "git",
+      summary: "Update XLT for release/1.12.0",
+      keyPoints: ["Merged PR for release/1.12.0"],
+      timeline: ["2026-03-12 - PR merged"],
+      references: [],
+    },
+    [
+      {
+        slug: "xlt-release-1-13-0",
+        topic: "XLT updates release/1.13.0",
+        tags: ["xlt", "release-1-13-0"],
+        summary: "Track XLT updates for 1.13.0",
+        keyPoints: ["Release 1.13 stream"],
+        timeline: ["2026-03-10 - PR merged"],
+        references: [],
+        digestedCount: 4,
+        updatedAt: "2026-03-10T00:00:00.000Z",
+        timeboxes: ["release-1-13-0"],
+        anchors: ["project-orion-web"],
+      },
+      {
+        slug: "xlt-release-1-12-0",
+        topic: "XLT updates release/1.12.0",
+        tags: ["xlt", "release-1-12-0"],
+        summary: "Track XLT updates for 1.12.0",
+        keyPoints: ["Release 1.12 stream"],
+        timeline: ["2026-03-12 - PR merged"],
+        references: [],
+        digestedCount: 2,
+        updatedAt: "2026-03-12T00:00:00.000Z",
+        timeboxes: ["release-1-12-0"],
+        anchors: ["project-orion-web"],
+      },
+    ],
+    8,
+  );
+
+  expect(ranked[0]?.slug).toBe("xlt-release-1-12-0");
+});
+
+test("chooseConsolidatedTarget keeps create_new when project anchors conflict", () => {
+  const target = chooseConsolidatedTarget({
+    item: {
+      category: "planning",
+      source: "slack",
+      summary: "Project Atlas API deployment readiness for beta",
+      keyPoints: ["Validate Project Atlas rollout"],
+      timeline: ["2026-03-12 - Rollout decision"],
+      references: [],
+    },
+    rankedCandidates: [
+      {
+        slug: "project-orion-web-release-1-12-0",
+        topic: "Project Orion Web release/1.12.0 updates",
+        tags: ["project-orion-web", "release-1-12-0"],
+        summary: "Track Project Orion Web updates",
+        keyPoints: ["Release readiness"],
+        timeline: ["2026-03-12 - Update merged"],
+        references: [],
+        digestedCount: 5,
+        updatedAt: "2026-03-12T00:00:00.000Z",
+        timeboxes: ["release-1-12-0"],
+        anchors: ["project-orion-web"],
+      },
+    ],
+    aiTarget: {
+      action: "create_new",
+      shortDescription: "project-atlas-deployment",
+      topic: "Project Atlas deployment",
+      tags: ["project-atlas-api"],
+    },
+  });
+
+  expect(target.action).toBe("create_new");
+});
+
+test("chooseConsolidatedTarget keeps create_new when candidate misses required timebox", () => {
+  const target = chooseConsolidatedTarget({
+    item: {
+      category: "planning",
+      source: "git",
+      summary: "Update XLT for release/1.12.0",
+      keyPoints: ["Release readiness"],
+      timeline: ["2026-03-12 - PR merged"],
+      references: [],
+    },
+    rankedCandidates: [
+      {
+        slug: "xlt-updates-general",
+        topic: "XLT updates",
+        tags: ["xlt"],
+        summary: "General XLT workstream",
+        keyPoints: ["Track XLT updates"],
+        timeline: [],
+        references: [],
+        digestedCount: 7,
+        updatedAt: "2026-03-12T00:00:00.000Z",
+        timeboxes: [],
+        anchors: ["project-orion-web"],
+      },
+    ],
+    aiTarget: {
+      action: "create_new",
+      shortDescription: "xlt-release-1-12-0",
+      topic: "XLT release/1.12.0",
+      tags: ["xlt", "release-1-12-0"],
+    },
+  });
+
+  expect(target.action).toBe("create_new");
+});
+
+test("chooseConsolidatedTarget downgrades unsafe update_existing to create_new", () => {
+  const target = chooseConsolidatedTarget({
+    item: {
+      category: "planning",
+      source: "git",
+      summary: "Dependency update for project-orion-web release/1.12.0",
+      keyPoints: ["Merged PR for release/1.12.0"],
+      timeline: ["2026-03-12 - PR merged"],
+      references: [
+        {
+          source: "git",
+          link: "https://git.example.com/org/project-orion-web/pull/2601",
+        },
+      ],
+    },
+    rankedCandidates: [
+      {
+        slug: "project-atlas-mixed-topic",
+        topic: "Project Atlas deployment coordination",
+        tags: ["project-atlas-api", "project-orion-web"],
+        summary: "Mixed topic should not be reused",
+        keyPoints: ["Cross-project content"],
+        timeline: ["2026-03-12 - Status update"],
+        references: [],
+        digestedCount: 9,
+        updatedAt: "2026-03-14T00:00:00.000Z",
+        timeboxes: ["release-1-12-0"],
+        anchors: ["project-atlas-api", "project-orion-web"],
+      },
+    ],
+    aiTarget: {
+      action: "update_existing",
+      slug: "project-atlas-mixed-topic",
+      topic: "Project Atlas deployment coordination",
+      tags: ["project-atlas-api"],
+    },
+  });
+
+  expect(target.action).toBe("create_new");
 });
 
 test("collectCategoryTagPool normalizes and deduplicates tags", () => {
@@ -217,6 +387,10 @@ test("collectCategoryTagPool normalizes and deduplicates tags", () => {
       keyPoints: [],
       timeline: [],
       references: [],
+      digestedCount: 0,
+      updatedAt: "",
+      timeboxes: [],
+      anchors: [],
     },
     {
       slug: "b",
@@ -226,6 +400,10 @@ test("collectCategoryTagPool normalizes and deduplicates tags", () => {
       keyPoints: [],
       timeline: [],
       references: [],
+      digestedCount: 0,
+      updatedAt: "",
+      timeboxes: [],
+      anchors: [],
     },
   ]);
 
