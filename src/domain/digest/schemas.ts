@@ -58,6 +58,7 @@ export function buildDigestResponseSchema(allowedSources: readonly string[]) {
                   },
                   link: {
                     type: "string",
+                    minLength: 1,
                   },
                 },
                 required: ["source", "link"],
@@ -127,7 +128,10 @@ export function buildMergeContentResponseSchema(
             type: "string",
             enum: [...allowedSources],
           },
-          link: { type: "string" },
+          link: {
+            type: "string",
+            minLength: 1,
+          },
         },
         required: ["source", "link"],
       },
