@@ -524,12 +524,14 @@ function topicDataFromDigestItem(
   category: DigestCategory,
   item: DigestItem,
 ): TopicDataByCategory {
-  if (category === "discussion") {
+  if (category === "decision") {
     return {
       summary: item.summary,
-      contextBackground: uniqueOrdered(item.keyPoints),
-      resolution: [],
-      participants: [],
+      decision: uniqueOrdered(item.keyPoints),
+      context: [],
+      optionsConsidered: [],
+      rationaleTradeoffs: [],
+      stakeholders: [],
       references: sortReferences(item.references),
     };
   }
@@ -560,12 +562,14 @@ function topicDataFromDigestItem(
 function topicDataFromMergeContent(
   content: MergeContentResult,
 ): TopicDataByCategory {
-  if (content.category === "discussion") {
+  if (content.category === "decision") {
     return {
       summary: content.summary,
-      contextBackground: content.contextBackground,
-      resolution: content.resolution,
-      participants: content.participants,
+      decision: content.decision,
+      context: content.context,
+      optionsConsidered: content.optionsConsidered,
+      rationaleTradeoffs: content.rationaleTradeoffs,
+      stakeholders: content.stakeholders,
       references: sortReferences(content.references),
     };
   }
@@ -598,28 +602,36 @@ function mergeTopicData(
   existing: TopicDataByCategory,
   incoming: TopicDataByCategory,
 ): TopicDataByCategory {
-  if (category === "discussion") {
-    const existingDiscussion = existing as Extract<
+  if (category === "decision") {
+    const existingDecision = existing as Extract<
       TopicDataByCategory,
-      { contextBackground: string[] }
+      { decision: string[] }
     >;
-    const incomingDiscussion = incoming as Extract<
+    const incomingDecision = incoming as Extract<
       TopicDataByCategory,
-      { contextBackground: string[] }
+      { decision: string[] }
     >;
     return {
       summary: existing.summary || incoming.summary,
-      contextBackground: uniqueOrdered([
-        ...existingDiscussion.contextBackground,
-        ...incomingDiscussion.contextBackground,
+      decision: uniqueOrdered([
+        ...existingDecision.decision,
+        ...incomingDecision.decision,
       ]),
-      resolution: uniqueOrdered([
-        ...existingDiscussion.resolution,
-        ...incomingDiscussion.resolution,
+      context: uniqueOrdered([
+        ...existingDecision.context,
+        ...incomingDecision.context,
       ]),
-      participants: uniqueOrdered([
-        ...existingDiscussion.participants,
-        ...incomingDiscussion.participants,
+      optionsConsidered: uniqueOrdered([
+        ...existingDecision.optionsConsidered,
+        ...incomingDecision.optionsConsidered,
+      ]),
+      rationaleTradeoffs: uniqueOrdered([
+        ...existingDecision.rationaleTradeoffs,
+        ...incomingDecision.rationaleTradeoffs,
+      ]),
+      stakeholders: uniqueOrdered([
+        ...existingDecision.stakeholders,
+        ...incomingDecision.stakeholders,
       ]),
       references: mergeReferences(existing.references, incoming.references),
     };

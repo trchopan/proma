@@ -104,6 +104,43 @@ test("parseDigestItemsResponse rejects invalid category", () => {
   );
 });
 
+test("parseDigestItemsResponse accepts decision category", () => {
+  const response = JSON.stringify({
+    items: [
+      {
+        category: "decision",
+        source: "slack",
+        summary: "Choose rollout strategy for API gateway.",
+        keyPoints: ["Adopt blue/green rollout"],
+        timeline: ["2026-04-15 - Rollout strategy approved"],
+        references: [],
+      },
+    ],
+  });
+
+  const items = parseDigestItemsResponse(response);
+  expect(items[0]?.category).toBe("decision");
+});
+
+test("parseDigestItemsResponse rejects legacy discussion category", () => {
+  const response = JSON.stringify({
+    items: [
+      {
+        category: "discussion",
+        source: "slack",
+        summary: "Legacy category should fail",
+        keyPoints: [],
+        timeline: [],
+        references: [],
+      },
+    ],
+  });
+
+  expect(() => parseDigestItemsResponse(response)).toThrow(
+    "Digest item contained invalid category",
+  );
+});
+
 test("renderDigestMarkdown always includes required sections", () => {
   const item: DigestItem = {
     category: "research",
@@ -422,6 +459,38 @@ test("parseMergeContentResponse validates canonical merge payload", () => {
   expect(parsed.references).toEqual([
     { source: "slack", link: "https://example.com/thread" },
   ]);
+});
+
+test("parseMergeContentResponse parses decision merge payload", () => {
+  const response = JSON.stringify({
+    category: "decision",
+    summary: "Adopt blue/green deployment for API gateway rollout.",
+    decision: ["Proceed with blue/green deployment for v2 API gateway."],
+    context: ["Canary-only approach increased rollback complexity."],
+    optionsConsidered: [
+      "Keep canary rollout as-is",
+      "Use blue/green with staged traffic shift",
+    ],
+    rationaleTradeoffs: [
+      "Blue/green improves rollback at the cost of temporary infra overhead.",
+    ],
+    stakeholders: ["Platform Team", "SRE"],
+    references: [{ source: "slack", link: "https://example.com/thread" }],
+    tags: ["api-gateway", "rollout"],
+  });
+
+  const parsed = parseMergeContentResponse(response, {
+    category: "decision",
+  });
+
+  expect(parsed.category).toBe("decision");
+  if (parsed.category !== "decision") {
+    throw new Error("Expected decision merge payload");
+  }
+  expect(parsed.decision).toEqual([
+    "Proceed with blue/green deployment for v2 API gateway.",
+  ]);
+  expect(parsed.stakeholders).toEqual(["Platform Team", "SRE"]);
 });
 
 test("generateMergeContent uses strict schema", async () => {

@@ -135,7 +135,7 @@ proma digest --project ./acme --input ./acme/imports/2026-03-12_slack_fetch-thre
 # report with explicit topic inputs + base reports
 proma report --project ./acme --period weekly \
   --input ./acme/topics/planning/release-readiness.md \
-  --input ./acme/topics/discussion/incident-response.md \
+  --input ./acme/topics/decision/incident-response.md \
   --base ./acme/reports/2026-03-01_weekly.md \
   --base ./acme/reports/2026-03-08_weekly.md
 ```
@@ -167,7 +167,7 @@ Note: the digest flow uses OpenAI Structured Outputs (`json_schema`) and fails f
 Report behavior:
 
 - `--period` is optional; default is `weekly`. Valid values: `daily`, `weekly`, `bi-weekly`, `monthly`.
-- Repeat `--input` to target specific markdown files; when omitted, the CLI scans markdown files under `<project>/topics/planning`, `<project>/topics/research`, and `<project>/topics/discussion`.
+- Repeat `--input` to target specific markdown files; when omitted, the CLI scans markdown files under `<project>/topics/planning`, `<project>/topics/research`, and `<project>/topics/decision`.
 - Repeat `--base` to provide specific previous reports; when omitted, the CLI loads markdown files under `<project>/reports`.
 - Report files include YAML front matter with `period`, `generated_at`, `model`, `input_files`, and `base_reports`.
 
@@ -184,7 +184,7 @@ Topic file behavior:
 - Tag metadata is normalized to lowercase kebab-case, deduplicated, and sorted; merge prefers reusing existing category tags before adding new ones.
 - New topic slugs are normalized to kebab-case and capped at 100 characters.
 - Topic files are canonical-only and category-specific:
-  - `discussion`: `Summary`, `Context/Background`, `Resolution`, `Participants`, `References`
+  - `decision`: `Summary`, `Decision`, `Context`, `Options Considered`, `Rationale / Tradeoffs`, `Stakeholders`, `References`
   - `research`: `Summary`, `Problem Statement`, `Research Plan`, `Key Findings`, `Person in Charge`, `References`
   - `planning`: `Summary`, `Objectives / Success Criteria`, `Scope`, `Deliverables`, `Plan`, `Timeline`, `Teams/Individuals Involved`, `References`
 - Planning participant identity formatting (when handles are available):

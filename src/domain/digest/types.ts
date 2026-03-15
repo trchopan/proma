@@ -1,11 +1,7 @@
 import type { Logger } from "$/core/logging";
 import type { PromptRegistry } from "$/core/prompting/types";
 
-export const DIGEST_CATEGORIES = [
-  "planning",
-  "research",
-  "discussion",
-] as const;
+export const DIGEST_CATEGORIES = ["planning", "research", "decision"] as const;
 
 export const DIGEST_SOURCES = ["slack", "wiki", "git", "document"] as const;
 
@@ -69,15 +65,17 @@ export type TopicRoutingTarget = {
   tags: string[];
 };
 
-export type MergeContentDiscussionInput = {
-  category: "discussion";
+export type MergeContentDecisionInput = {
+  category: "decision";
   topic: string;
   tags: string[];
   existing: {
     summary: string;
-    contextBackground: string[];
-    resolution: string[];
-    participants: string[];
+    decision: string[];
+    context: string[];
+    optionsConsidered: string[];
+    rationaleTradeoffs: string[];
+    stakeholders: string[];
     references: DigestReference[];
   };
   incoming: DigestItem;
@@ -119,16 +117,18 @@ export type MergeContentPlanningInput = {
 };
 
 export type MergeContentInput =
-  | MergeContentDiscussionInput
+  | MergeContentDecisionInput
   | MergeContentResearchInput
   | MergeContentPlanningInput;
 
-export type MergeContentDiscussionResult = {
-  category: "discussion";
+export type MergeContentDecisionResult = {
+  category: "decision";
   summary: string;
-  contextBackground: string[];
-  resolution: string[];
-  participants: string[];
+  decision: string[];
+  context: string[];
+  optionsConsidered: string[];
+  rationaleTradeoffs: string[];
+  stakeholders: string[];
   references: DigestReference[];
   tags: string[];
 };
@@ -158,7 +158,7 @@ export type MergeContentPlanningResult = {
 };
 
 export type MergeContentResult =
-  | MergeContentDiscussionResult
+  | MergeContentDecisionResult
   | MergeContentResearchResult
   | MergeContentPlanningResult;
 
