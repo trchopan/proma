@@ -509,6 +509,38 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
   });
 });
 
+test("prepareTopicMerge blocks routine git decision promotion for new topic", async () => {
+  await withTempDir(async (dir) => {
+    const plan = await prepareTopicMerge({
+      projectRoot: dir,
+      category: "decision",
+      item: {
+        category: "decision",
+        source: "git",
+        summary: "Update icon display and bump version to 1.2.3",
+        keyPoints: ["Fix icon sizing in demo navigation", "Chore: update deps"],
+        timeline: ["2026-03-15 - PR merged"],
+        references: [{ source: "git", link: "https://example.com/pr/3010" }],
+      },
+      target: {
+        action: "create_new",
+        shortDescription: "icon-and-version-update",
+        topic: "Icon and version update",
+        tags: ["ui", "release"],
+      },
+      mergedDigestId: "notes/decision_2026-03-15_1.md",
+      now: new Date("2026-03-15T10:00:00Z"),
+    });
+
+    expect(plan.relativeTargetPath).toBe(
+      "topics/decision/icon-and-version-update.md",
+    );
+    expect(plan.isNew).toBe(true);
+    expect(plan.hasChanges).toBe(false);
+    expect(plan.proposedContent).toBe("");
+  });
+});
+
 test("prepareTopicMerge is idempotent for same reference", async () => {
   await withTempDir(async (dir) => {
     const topicDir = path.join(dir, "topics", "planning");

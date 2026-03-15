@@ -198,6 +198,7 @@ Topic file behavior:
 - Project/product identity signals (for example `project-atlas-api`, `project-orion-web`) are treated as hard split boundaries to avoid cross-project topic contamination.
 - Merge pre-ranks candidates deterministically and sends only the top 8 candidates to routing.
 - Merge applies semantic content refinement to reduce unrelated/duplicated key points and timeline entries, with deterministic fallback on failure.
+- Merge uses a decision-promotion threshold for new `git`-sourced decision topics: routine implementation changes without explicit rationale/tradeoffs or significant architecture/infra/policy impact are not promoted into new decision topic files.
 - Repeated ingestion of already-merged references becomes a no-op (`No topic change`).
 - After topic targets are selected, the CLI shows a diff preview for each proposed merge. By default it asks for confirmation (`y` to apply, default `N` to skip); with `--auto-merge`, it applies automatically without prompting.
 
