@@ -416,6 +416,164 @@ test("buildTopicMergeContent prefers display-name identity over handle-only dupl
   );
 });
 
+test("buildTopicMergeContent normalizes optional-at canonical handles and deduplicates identity", () => {
+  const currentContent = [
+    "---",
+    "category: planning",
+    "created_at: '2026-03-09T00:00:00.000Z'",
+    "updated_at: '2026-03-09T00:00:00.000Z'",
+    "tags:",
+    "  - 'coordination'",
+    "sources:",
+    "  - slack",
+    "digested_note_paths:",
+    "---",
+    "",
+    "# Team Coordination",
+    "",
+    "## Summary",
+    "Existing summary",
+    "",
+    "## Objectives / Success Criteria",
+    "- Existing point",
+    "",
+    "## Scope",
+    "- None",
+    "",
+    "## Deliverables",
+    "- None",
+    "",
+    "## Plan",
+    "- None",
+    "",
+    "## Timeline",
+    "- None",
+    "",
+    "## Teams/Individuals Involved",
+    "- None",
+    "",
+    "## References",
+    "- None",
+    "",
+  ].join("\n");
+
+  const result = buildTopicMergeContent({
+    currentContent,
+    category: "planning",
+    item: {
+      category: "planning",
+      source: "slack",
+      summary: "Coordination updates with @vy.nguyen",
+      keyPoints: ["Owner confirmed in status update."],
+      timeline: ["2026-03-11 - Ownership clarified"],
+      references: [{ source: "slack", link: "https://example.com/thread" }],
+    },
+    mergeContent: {
+      category: "planning",
+      summary: "Coordination updates",
+      objectivesSuccessCriteria: ["Existing point"],
+      scope: [],
+      deliverables: [],
+      plan: [],
+      timeline: ["2026-03-11 - Ownership clarified"],
+      teamsIndividualsInvolved: ["vy.nguyen (slack:@vy.nguyen)"],
+      references: [{ source: "slack", link: "https://example.com/thread" }],
+      tags: ["coordination"],
+    },
+    target: {
+      action: "update_existing",
+      slug: "team-coordination",
+      topic: "Team Coordination",
+      tags: ["coordination"],
+    },
+    mergedDigestId: "notes/planning_2026-03-11_4.md",
+  });
+
+  expect(result.proposedContent).toContain("- vy.nguyen (slack:vy.nguyen)");
+  expect(result.proposedContent).not.toContain("(slack:@vy.nguyen)");
+  expect(result.proposedContent).not.toContain("- (slack:vy.nguyen)");
+});
+
+test("buildTopicMergeContent drops malformed display-name artifact for canonical identity", () => {
+  const currentContent = [
+    "---",
+    "category: planning",
+    "created_at: '2026-03-09T00:00:00.000Z'",
+    "updated_at: '2026-03-09T00:00:00.000Z'",
+    "tags:",
+    "  - 'coordination'",
+    "sources:",
+    "  - slack",
+    "digested_note_paths:",
+    "---",
+    "",
+    "# Team Coordination",
+    "",
+    "## Summary",
+    "Existing summary",
+    "",
+    "## Objectives / Success Criteria",
+    "- Existing point",
+    "",
+    "## Scope",
+    "- None",
+    "",
+    "## Deliverables",
+    "- None",
+    "",
+    "## Plan",
+    "- None",
+    "",
+    "## Timeline",
+    "- None",
+    "",
+    "## Teams/Individuals Involved",
+    "- None",
+    "",
+    "## References",
+    "- None",
+    "",
+  ].join("\n");
+
+  const result = buildTopicMergeContent({
+    currentContent,
+    category: "planning",
+    item: {
+      category: "planning",
+      source: "slack",
+      summary: "Coordination update",
+      keyPoints: ["Need FE deployment update."],
+      timeline: ["2026-03-11 - Follow-up"],
+      references: [{ source: "slack", link: "https://example.com/thread" }],
+    },
+    mergeContent: {
+      category: "planning",
+      summary: "Coordination update",
+      objectivesSuccessCriteria: ["Existing point"],
+      scope: [],
+      deliverables: [],
+      plan: [],
+      timeline: ["2026-03-11 - Follow-up"],
+      teamsIndividualsInvolved: [
+        "(.tran) (slack:U05T1QE6CJ0)",
+        "(slack:U05T1QE6CJ0)",
+      ],
+      references: [{ source: "slack", link: "https://example.com/thread" }],
+      tags: ["coordination"],
+    },
+    target: {
+      action: "update_existing",
+      slug: "team-coordination",
+      topic: "Team Coordination",
+      tags: ["coordination"],
+    },
+    mergedDigestId: "notes/planning_2026-03-11_5.md",
+  });
+
+  expect(result.proposedContent).toContain("- (slack:U05T1QE6CJ0)");
+  expect(result.proposedContent).not.toContain("- (.tran) (slack:U05T1QE6CJ0)");
+});
+
 test("buildTopicMergeContent does not coerce nickname parentheses into handle identities", () => {
   const currentContent = [
     "---",
