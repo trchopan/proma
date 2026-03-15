@@ -138,21 +138,29 @@ export function buildMergeContentResponseSchema(
     },
   } as const;
 
-  if (input.category === "discussion") {
+  if (input.category === "decision") {
     return {
       type: "object",
       additionalProperties: false,
       properties: {
         ...shared,
-        contextBackground: {
+        decision: {
           type: "array",
           items: { type: "string" },
         },
-        resolution: {
+        context: {
           type: "array",
           items: { type: "string" },
         },
-        participants: {
+        optionsConsidered: {
+          type: "array",
+          items: { type: "string" },
+        },
+        rationaleTradeoffs: {
+          type: "array",
+          items: { type: "string" },
+        },
+        stakeholders: {
           type: "array",
           items: { type: "string" },
         },
@@ -160,9 +168,11 @@ export function buildMergeContentResponseSchema(
       required: [
         "category",
         "summary",
-        "contextBackground",
-        "resolution",
-        "participants",
+        "decision",
+        "context",
+        "optionsConsidered",
+        "rationaleTradeoffs",
+        "stakeholders",
         "references",
         "tags",
       ],

@@ -209,12 +209,14 @@ export function createBuiltInPromptRegistry(options?: {
           allowedSources,
         );
         const sectionGuidance =
-          context.category === "discussion"
+          context.category === "decision"
             ? [
-                "Return sections as: summary, contextBackground, resolution, participants, references, tags.",
-                "Context/Background should capture facts and framing.",
-                "Resolution should capture decisions and agreed outcomes.",
-                "Participants should list teams/individuals involved.",
+                "Return sections as: summary, decision, context, optionsConsidered, rationaleTradeoffs, stakeholders, references, tags.",
+                "Decision should capture the chosen direction and concrete resolution.",
+                "Context should capture relevant facts, constraints, and framing.",
+                "Options Considered should list meaningful alternatives.",
+                "Rationale / Tradeoffs should explain why the decision was chosen.",
+                "Stakeholders should list teams/individuals involved in the decision.",
               ]
             : context.category === "research"
               ? [

@@ -100,7 +100,7 @@ test("listPendingDigestItems returns only unmerged digest notes", async () => {
         references: [],
       },
       {
-        category: "discussion",
+        category: "decision",
         source: "slack",
         summary: "Discuss rollout risks.",
         keyPoints: ["Track mitigation"],
@@ -126,7 +126,7 @@ test("listPendingDigestItems returns only unmerged digest notes", async () => {
     const pending = await listPendingDigestItems(dir);
 
     expect(pending.map((entry) => entry.relativePath)).toEqual([
-      "notes/discussion_2026-03-09_1.md",
+      "notes/decision_2026-03-09_1.md",
     ]);
   });
 });
@@ -421,9 +421,9 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
 
     const plan = await prepareTopicMerge({
       projectRoot: dir,
-      category: "discussion",
+      category: "decision",
       item: {
-        category: "discussion",
+        category: "decision",
         source: "slack",
         summary: "Discussed incident fixes",
         keyPoints: ["Backfill alerts"],
@@ -431,12 +431,12 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
         references: [],
       },
       target,
-      mergedDigestId: "notes/discussion_2026-03-09_1.md",
+      mergedDigestId: "notes/decision_2026-03-09_1.md",
       now: new Date("2026-03-09T10:00:00Z"),
     });
 
     expect(plan.relativeTargetPath).toBe(
-      "topics/discussion/incident-response.md",
+      "topics/decision/incident-response.md",
     );
     expect(plan.proposedContent).toContain("# Incident Response");
     expect(plan.proposedContent).toContain(
@@ -445,19 +445,21 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
     expect(plan.proposedContent).toContain("  - 'incident-response'");
     expect(plan.proposedContent).toContain("  - 'post-mortem'");
     expect(plan.proposedContent).toContain("## Summary");
-    expect(plan.proposedContent).toContain("## Context/Background");
-    expect(plan.proposedContent).toContain("## Resolution");
-    expect(plan.proposedContent).toContain("## Participants");
+    expect(plan.proposedContent).toContain("## Decision");
+    expect(plan.proposedContent).toContain("## Context");
+    expect(plan.proposedContent).toContain("## Options Considered");
+    expect(plan.proposedContent).toContain("## Rationale / Tradeoffs");
+    expect(plan.proposedContent).toContain("## Stakeholders");
     expect(plan.proposedContent).toContain("## References");
     expect(plan.proposedContent).toContain("digested_note_paths:");
-    expect(plan.proposedContent).toContain("notes/discussion_2026-03-09_1.md");
+    expect(plan.proposedContent).toContain("notes/decision_2026-03-09_1.md");
     expect(plan.proposedContent).not.toContain("source_refs:");
     expect(plan.proposedContent).not.toContain("merged_ingest_ids:");
     expect(plan.hasChanges).toBe(true);
 
     await writePreparedTopicMerge(plan);
     const written = await Bun.file(
-      path.join(dir, "topics", "discussion", "incident-response.md"),
+      path.join(dir, "topics", "decision", "incident-response.md"),
     ).text();
     expect(written).toContain("## Summary");
   });
@@ -578,21 +580,21 @@ test("resolveReportInputFiles rejects explicit legacy non-topics path", async ()
   });
 });
 
-test("resolveReportInputFiles falls back to topics/planning|research|discussion", async () => {
+test("resolveReportInputFiles falls back to topics/planning|research|decision", async () => {
   await withTempDir(async (dir) => {
     const planningFile = path.join(dir, "topics", "planning", "a.md");
     const researchFile = path.join(dir, "topics", "research", "b.md");
-    const discussionFile = path.join(dir, "topics", "discussion", "c.md");
+    const decisionFile = path.join(dir, "topics", "decision", "c.md");
 
     await mkdir(path.dirname(planningFile), { recursive: true });
     await mkdir(path.dirname(researchFile), { recursive: true });
-    await mkdir(path.dirname(discussionFile), { recursive: true });
+    await mkdir(path.dirname(decisionFile), { recursive: true });
     await Bun.write(planningFile, "# a");
     await Bun.write(researchFile, "# b");
-    await Bun.write(discussionFile, "# c");
+    await Bun.write(decisionFile, "# c");
 
     const resolved = await resolveReportInputFiles(dir, []);
-    expect(resolved).toEqual([planningFile, researchFile, discussionFile]);
+    expect(resolved).toEqual([planningFile, researchFile, decisionFile]);
   });
 });
 

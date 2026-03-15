@@ -130,7 +130,7 @@ test("parseReportCommandArgs parses required and repeatable args", () => {
     "--input",
     "topics/planning/release.md",
     "--input",
-    "topics/discussion/incident.md",
+    "topics/decision/incident.md",
     "--base",
     "reports/2026-03-08_weekly.md",
     "--base",
@@ -142,7 +142,7 @@ test("parseReportCommandArgs parses required and repeatable args", () => {
   expect(parsed).toEqual({
     project: "apollo",
     period: "weekly",
-    input: ["topics/planning/release.md", "topics/discussion/incident.md"],
+    input: ["topics/planning/release.md", "topics/decision/incident.md"],
     base: ["reports/2026-03-08_weekly.md", "reports/2026-03-01_weekly.md"],
     model: "gpt-4.1",
     verbose: false,

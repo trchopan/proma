@@ -402,16 +402,18 @@ async function runMergeCommand(
     if (!parsed.dryRun) {
       try {
         const mergeContentInput: MergeContentInput =
-          digestNote.item.category === "discussion"
+          digestNote.item.category === "decision"
             ? {
-                category: "discussion",
+                category: "decision",
                 topic: target.topic,
                 tags: targetForMerge.tags,
                 existing: {
                   summary: selectedCandidate?.summary ?? "",
-                  contextBackground: selectedCandidate?.keyPoints ?? [],
-                  resolution: [],
-                  participants: [],
+                  decision: selectedCandidate?.keyPoints ?? [],
+                  context: [],
+                  optionsConsidered: [],
+                  rationaleTradeoffs: [],
+                  stakeholders: [],
                   references: selectedCandidate?.references ?? [],
                 },
                 incoming: digestNote.item,

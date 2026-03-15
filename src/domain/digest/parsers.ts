@@ -41,7 +41,7 @@ function normalizeCategory(input: unknown): DigestCategory | null {
 
   const value = input.trim().toLowerCase();
 
-  if (value === "planning" || value === "research" || value === "discussion") {
+  if (value === "planning" || value === "research" || value === "decision") {
     return value;
   }
 
@@ -334,18 +334,22 @@ export function parseMergeContentResponse(
     );
   }
 
-  if (category === "discussion") {
+  if (category === "decision") {
     return {
       category,
       summary: summary.trim(),
-      contextBackground: normalizeStringArray(
-        (parsed as { contextBackground?: unknown }).contextBackground,
+      decision: normalizeStringArray(
+        (parsed as { decision?: unknown }).decision,
       ),
-      resolution: normalizeStringArray(
-        (parsed as { resolution?: unknown }).resolution,
+      context: normalizeStringArray((parsed as { context?: unknown }).context),
+      optionsConsidered: normalizeStringArray(
+        (parsed as { optionsConsidered?: unknown }).optionsConsidered,
       ),
-      participants: normalizeStringArray(
-        (parsed as { participants?: unknown }).participants,
+      rationaleTradeoffs: normalizeStringArray(
+        (parsed as { rationaleTradeoffs?: unknown }).rationaleTradeoffs,
+      ),
+      stakeholders: normalizeStringArray(
+        (parsed as { stakeholders?: unknown }).stakeholders,
       ),
       references: normalizeReferences(
         (parsed as { references?: unknown }).references,
