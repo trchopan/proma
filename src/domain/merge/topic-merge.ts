@@ -345,7 +345,7 @@ function parseCanonicalIdentity(
   entry: string,
 ): { platform: string; handle: string; displayName?: string } | null {
   const fullIdentity = entry.match(
-    /^(.+?)\s*\(\s*([a-z0-9._-]+)\s*:\s*([A-Za-z0-9._-]+)\s*\)$/i,
+    /^(.+?)\s*\(\s*([a-z0-9._-]+)\s*:\s*(@?[A-Za-z0-9._-]+)\s*\)$/i,
   );
   if (fullIdentity?.[1] && fullIdentity[2] && fullIdentity[3]) {
     const platform = fullIdentity[2].trim().toLowerCase();
@@ -363,7 +363,7 @@ function parseCanonicalIdentity(
   }
 
   const handleOnlyIdentity = entry.match(
-    /^\(\s*([a-z0-9._-]+)\s*:\s*([A-Za-z0-9._-]+)\s*\)$/i,
+    /^\(\s*([a-z0-9._-]+)\s*:\s*(@?[A-Za-z0-9._-]+)\s*\)$/i,
   );
   if (!handleOnlyIdentity?.[1] || !handleOnlyIdentity[2]) {
     return null;
@@ -381,6 +381,36 @@ function parseCanonicalIdentity(
   };
 }
 
+function sanitizeDisplayName(input?: string): string | undefined {
+  if (!input) {
+    return undefined;
+  }
+
+  let displayName = input.trim();
+  if (displayName.length === 0) {
+    return undefined;
+  }
+
+  const wrappedInParentheses =
+    displayName.startsWith("(") && displayName.endsWith(")");
+  if (wrappedInParentheses && displayName.length > 2) {
+    displayName = displayName.slice(1, -1).trim();
+  }
+
+  if (displayName.length === 0 || !/[A-Za-z0-9]/.test(displayName)) {
+    return undefined;
+  }
+
+  if (
+    /^[._-]+[A-Za-z0-9._-]*$/.test(displayName) &&
+    !displayName.includes(" ")
+  ) {
+    return undefined;
+  }
+
+  return displayName;
+}
+
 function formatIdentity(options: {
   platform: string;
   handle: string;
@@ -396,7 +426,7 @@ function formatIdentity(options: {
     return "";
   }
 
-  const displayName = options.displayName?.trim();
+  const displayName = sanitizeDisplayName(options.displayName);
   if (displayName && displayName.length > 0) {
     return `${displayName} (${platform}:${handle})`;
   }
