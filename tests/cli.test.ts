@@ -461,6 +461,12 @@ test("runCli report defaults period to weekly when omitted", async () => {
 
 test("runCli digest writes stage 1 files only", async () => {
   const output: string[] = [];
+  let capturedWriteOptions:
+    | {
+        projectRoot: string;
+        inputRaw: string;
+      }
+    | undefined;
   const mockItems: DigestItem[] = [
     {
       category: "planning",
@@ -473,17 +479,24 @@ test("runCli digest writes stage 1 files only", async () => {
   ];
 
   const exitCode = await runCli(
-    ["digest", "--input", "./input.txt", "--project", "apollo"],
+    ["digest", "--input", "./apollo/raw/input.txt", "--project", "apollo"],
     {
       readTextFile: async () => "raw text",
       generateDigestItems: async () => mockItems,
-      writeDigestItems: async () => [
-        {
-          item: mockItems[0] as DigestItem,
-          absolutePath: "/tmp/apollo/notes/planning_2026-03-09_1.md",
-          relativePath: "notes/planning_2026-03-09_1.md",
-        },
-      ],
+      writeDigestItems: async (options) => {
+        capturedWriteOptions = {
+          projectRoot: options.projectRoot,
+          inputRaw: options.inputRaw,
+        };
+
+        return [
+          {
+            item: mockItems[0] as DigestItem,
+            absolutePath: "/tmp/apollo/notes/planning_2026-03-09_1.md",
+            relativePath: "notes/planning_2026-03-09_1.md",
+          },
+        ];
+      },
       listPendingDigestItems: async () => {
         throw new Error("listPendingDigestItems should not be called");
       },
@@ -503,6 +516,47 @@ test("runCli digest writes stage 1 files only", async () => {
 
   expect(exitCode).toBe(0);
   expect(output).toContain("Wrote 1 digest file(s):");
+  expect(capturedWriteOptions).toEqual({
+    projectRoot: path.resolve("apollo"),
+    inputRaw: path.join("raw", "input.txt"),
+  });
+});
+
+test("runCli digest stores absolute input_raw when input is outside project root", async () => {
+  let capturedInputRaw: string | undefined;
+  const mockItems: DigestItem[] = [
+    {
+      category: "planning",
+      source: "wiki",
+      summary: "Plan sprint goals.",
+      keyPoints: ["Align scope"],
+      timeline: ["2026-03-09 - Sprint planning kickoff"],
+      references: [],
+    },
+  ];
+
+  const exitCode = await runCli(
+    ["digest", "--input", "./outside/input.txt", "--project", "apollo"],
+    {
+      readTextFile: async () => "raw text",
+      generateDigestItems: async () => mockItems,
+      writeDigestItems: async (options) => {
+        capturedInputRaw = options.inputRaw;
+        return [];
+      },
+    },
+    {
+      out: () => {
+        return;
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(capturedInputRaw).toBe(path.resolve("./outside/input.txt"));
 });
 
 test("runCli digest with --dry-run does not write stage 1 files", async () => {

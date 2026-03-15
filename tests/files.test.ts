@@ -71,6 +71,7 @@ test("writeDigestItems writes to notes directory", async () => {
     const written = await writeDigestItems({
       projectRoot: dir,
       items,
+      inputRaw: path.join("raw", "input-1.md"),
       now: new Date("2026-03-09T10:00:00Z"),
     });
 
@@ -84,6 +85,7 @@ test("writeDigestItems writes to notes directory", async () => {
     expect(content).toContain("category: research");
     expect(content).toContain("source: slack");
     expect(content).toContain("merged: false");
+    expect(content).toContain(`input_raw: '${path.join("raw", "input-1.md")}'`);
     expect(content).toContain("merged_topic_paths:");
   });
 });
@@ -112,6 +114,7 @@ test("listPendingDigestItems returns only unmerged digest notes", async () => {
     const written = await writeDigestItems({
       projectRoot: dir,
       items,
+      inputRaw: path.join("raw", "input-2.md"),
       now: new Date("2026-03-09T10:00:00Z"),
     });
 
@@ -122,12 +125,53 @@ test("listPendingDigestItems returns only unmerged digest notes", async () => {
     const mergedContent = await Bun.file(written[0]?.absolutePath ?? "").text();
     expect(mergedContent).toContain("merged_topic_paths:");
     expect(mergedContent).toContain("topics/planning/sprint-goals.md");
+    expect(mergedContent).toContain(
+      `input_raw: '${path.join("raw", "input-2.md")}'`,
+    );
 
     const pending = await listPendingDigestItems(dir);
 
     expect(pending.map((entry) => entry.relativePath)).toEqual([
       "notes/decision_2026-03-09_1.md",
     ]);
+  });
+});
+
+test("listPendingDigestItems supports legacy digest notes without input_raw", async () => {
+  await withTempDir(async (dir) => {
+    const notesDir = path.join(dir, "notes");
+    await mkdir(notesDir, { recursive: true });
+
+    await Bun.write(
+      path.join(notesDir, "planning_2026-03-09_1.md"),
+      [
+        "---",
+        "category: planning",
+        "source: wiki",
+        "merged: false",
+        "merged_topic_paths:",
+        "---",
+        "",
+        "## Summary",
+        "Legacy digest note without input_raw.",
+        "",
+        "## Key Points",
+        "- Preserve backward compatibility",
+        "",
+        "## Timeline",
+        "- 2026-03-09 - Digest created",
+        "",
+        "## References",
+      ].join("\n"),
+    );
+
+    const pending = await listPendingDigestItems(dir);
+
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.relativePath).toBe("notes/planning_2026-03-09_1.md");
+    expect(pending[0]?.item.summary).toBe(
+      "Legacy digest note without input_raw.",
+    );
   });
 });
 

@@ -17,6 +17,7 @@ import {
 export type WriteDigestItemsOptions = {
   projectRoot: string;
   items: DigestItem[];
+  inputRaw: string;
   now?: Date;
   allowedSources?: readonly string[];
 };
@@ -32,7 +33,12 @@ type DigestNoteFrontMatter = {
   source: DigestSource;
   merged: boolean;
   merged_topic_paths: string[];
+  input_raw?: string;
 };
+
+function yamlQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
 
 function parseArrayItemValue(raw: string): string {
   return raw.trim().replace(/^['"]|['"]$/g, "");
@@ -199,6 +205,7 @@ function parseDigestNoteFrontMatter(
       frontMatter,
       "merged_topic_paths",
     ),
+    input_raw: entries.get("input_raw")?.trim() || undefined,
   };
 }
 
@@ -208,6 +215,9 @@ function renderDigestNoteFrontMatter(metadata: DigestNoteFrontMatter): string {
     `category: ${metadata.category}`,
     `source: ${metadata.source}`,
     `merged: ${metadata.merged ? "true" : "false"}`,
+    ...(metadata.input_raw
+      ? [`input_raw: ${yamlQuote(metadata.input_raw)}`]
+      : []),
     "merged_topic_paths:",
     ...metadata.merged_topic_paths.map((topicPath) => `  - '${topicPath}'`),
     "---",
@@ -219,12 +229,14 @@ function renderDigestNoteFile(
   item: DigestItem,
   merged: boolean,
   mergedTopicPaths: string[],
+  inputRaw?: string,
 ): string {
   return `${renderDigestNoteFrontMatter({
     category: item.category,
     source: item.source,
     merged,
     merged_topic_paths: [...new Set(mergedTopicPaths)],
+    input_raw: inputRaw,
   })}${renderDigestMarkdown(item)}`;
 }
 
@@ -236,6 +248,7 @@ function parseDigestNoteItem(
   item: DigestItem;
   merged: boolean;
   mergedTopicPaths: string[];
+  inputRaw?: string;
 } {
   const frontMatter = parseDigestNoteFrontMatter(markdown, allowedSources);
   const { body } = splitFrontMatter(markdown);
@@ -262,6 +275,7 @@ function parseDigestNoteItem(
     },
     merged: frontMatter.merged,
     mergedTopicPaths: frontMatter.merged_topic_paths,
+    inputRaw: frontMatter.input_raw,
   };
 }
 
@@ -286,7 +300,7 @@ export async function writeDigestItems(
       index,
     );
     const absolutePath = path.join(options.projectRoot, relativePath);
-    const markdown = renderDigestNoteFile(item, false, []);
+    const markdown = renderDigestNoteFile(item, false, [], options.inputRaw);
 
     await Bun.write(absolutePath, markdown);
 
@@ -363,9 +377,11 @@ export async function markDigestItemMerged(
 
   await Bun.write(
     absolutePath,
-    renderDigestNoteFile(digestNote.item, true, [
-      ...digestNote.mergedTopicPaths,
-      ...mergedTopicPaths,
-    ]),
+    renderDigestNoteFile(
+      digestNote.item,
+      true,
+      [...digestNote.mergedTopicPaths, ...mergedTopicPaths],
+      digestNote.inputRaw,
+    ),
   );
 }
