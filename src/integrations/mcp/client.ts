@@ -44,6 +44,15 @@ export type McpTool = {
   inputSchema?: unknown;
 };
 
+export type McpSession = {
+  listTools: () => Promise<McpTool[]>;
+  callTool: (options: {
+    tool: string;
+    args: Record<string, unknown>;
+  }) => Promise<unknown>;
+  close: () => Promise<void>;
+};
+
 type ListToolsResult = {
   tools?: Array<{
     name?: unknown;
@@ -315,32 +324,77 @@ async function withSession<T>(
   }
 }
 
+function normalizeTools(result: ListToolsResult): McpTool[] {
+  const tools = result.tools ?? [];
+  const normalized: McpTool[] = [];
+
+  for (const tool of tools) {
+    const name = typeof tool.name === "string" ? tool.name.trim() : "";
+    if (!name) {
+      continue;
+    }
+
+    normalized.push({
+      name,
+      description:
+        typeof tool.description === "string" ? tool.description : undefined,
+      inputSchema: tool.inputSchema ?? tool.input_schema,
+    });
+  }
+
+  return normalized;
+}
+
+export async function createMcpSession(options: {
+  server: McpLocalServerRuntime;
+  timeoutMs?: number;
+}): Promise<McpSession> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  const session = new LocalMcpSession(options.server.command, timeoutMs);
+  await session.initialize();
+
+  let closed = false;
+
+  return {
+    listTools: async () => {
+      const result = (await session.request(
+        "tools/list",
+        {},
+      )) as ListToolsResult;
+      return normalizeTools(result);
+    },
+    callTool: async ({ tool, args }) => {
+      return session.request("tools/call", {
+        name: tool,
+        arguments: args,
+      });
+    },
+    close: async () => {
+      if (closed) {
+        return;
+      }
+
+      closed = true;
+      await session.close();
+    },
+  };
+}
+
 export async function listMcpTools(options: {
   server: McpLocalServerRuntime;
   timeoutMs?: number;
 }): Promise<McpTool[]> {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
-  return withSession(options.server, timeoutMs, async (session) => {
-    const result = (await session.request("tools/list", {})) as ListToolsResult;
-    const tools = result.tools ?? [];
-    const normalized: McpTool[] = [];
-
-    for (const tool of tools) {
-      const name = typeof tool.name === "string" ? tool.name.trim() : "";
-      if (!name) {
-        continue;
-      }
-
-      normalized.push({
-        name,
-        description:
-          typeof tool.description === "string" ? tool.description : undefined,
-        inputSchema: tool.inputSchema ?? tool.input_schema,
-      });
-    }
-
-    return normalized;
-  });
+  return withSession(
+    options.server,
+    options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+    async (session) => {
+      const result = (await session.request(
+        "tools/list",
+        {},
+      )) as ListToolsResult;
+      return normalizeTools(result);
+    },
+  );
 }
 
 export async function callMcpTool(options: {
