@@ -29,6 +29,67 @@ export type BuiltTopicMerge = {
 export const MAX_TOPIC_SLUG_LENGTH = 100;
 export const MAX_TOPIC_TAGS = 12;
 
+const ROUTINE_GIT_DECISION_KEYWORDS = [
+  "update",
+  "updated",
+  "fix",
+  "fixed",
+  "version",
+  "bump",
+  "icon",
+  "chore",
+  "config",
+  "configuration",
+  "rename",
+  "renamed",
+  "refactor",
+  "typo",
+  "deps",
+  "dependency",
+  "dependencies",
+  "lint",
+  "format",
+  "style",
+  "ui tweak",
+  "copy change",
+  "minor",
+] as const;
+
+const DECISION_RATIONALE_KEYWORDS = [
+  "because",
+  "why",
+  "tradeoff",
+  "trade-off",
+  "alternative",
+  "alternatives",
+  "option",
+  "options",
+  "considered",
+  "rationale",
+  "risk",
+  "constraint",
+  "decision",
+] as const;
+
+const SIGNIFICANT_DECISION_IMPACT_KEYWORDS = [
+  "architecture",
+  "architectural",
+  "infrastructure",
+  "infra",
+  "operational policy",
+  "policy",
+  "cross-team",
+  "cross team",
+  "multiple teams",
+  "multi-team",
+  "breaking",
+  "migration",
+  "rollout",
+  "release scope",
+  "platform",
+  "service boundary",
+] as const;
+
 export function slugifyTopic(input: string): string {
   const normalized = input
     .trim()
@@ -702,6 +763,66 @@ function mergeTopicData(
   };
 }
 
+function includesAnyKeyword(
+  value: string,
+  keywords: readonly string[],
+): boolean {
+  return keywords.some((keyword) => value.includes(keyword));
+}
+
+function isLikelyRoutineGitDecisionChange(item: DigestItem): boolean {
+  const text = [item.summary, ...item.keyPoints].join(" ").toLowerCase();
+  const hasRoutineKeyword = includesAnyKeyword(
+    text,
+    ROUTINE_GIT_DECISION_KEYWORDS,
+  );
+  const hasVersionPattern = /\bv?\d+\.\d+(?:\.\d+)?\b/.test(text);
+
+  return hasRoutineKeyword || hasVersionPattern;
+}
+
+function hasDecisionRationaleSignal(item: DigestItem): boolean {
+  const text = [item.summary, ...item.keyPoints].join(" ").toLowerCase();
+  return includesAnyKeyword(text, DECISION_RATIONALE_KEYWORDS);
+}
+
+function hasSignificantDecisionImpactSignal(item: DigestItem): boolean {
+  const text = [item.summary, ...item.keyPoints].join(" ").toLowerCase();
+  return includesAnyKeyword(text, SIGNIFICANT_DECISION_IMPACT_KEYWORDS);
+}
+
+function shouldBlockNewDecisionPromotion(options: {
+  category: DigestCategory;
+  item: DigestItem;
+  target: TopicRoutingTarget;
+  currentContent: string;
+}): boolean {
+  if (options.category !== "decision" || options.item.source !== "git") {
+    return false;
+  }
+
+  const isNewTarget =
+    options.target.action === "create_new" ||
+    options.currentContent.trim().length === 0;
+  if (!isNewTarget) {
+    return false;
+  }
+
+  if (!isLikelyRoutineGitDecisionChange(options.item)) {
+    return false;
+  }
+
+  if (hasDecisionRationaleSignal(options.item)) {
+    return false;
+  }
+
+  if (hasSignificantDecisionImpactSignal(options.item)) {
+    return false;
+  }
+
+  return true;
+}
+
 export function buildTopicMergeContent(options: {
   currentContent: string;
   category: DigestCategory;
@@ -739,6 +860,20 @@ export function buildTopicMergeContent(options: {
   });
 
   if (identity.isMerged) {
+    return {
+      proposedContent: options.currentContent,
+      hasChanges: false,
+    };
+  }
+
+  if (
+    shouldBlockNewDecisionPromotion({
+      category: options.category,
+      item: options.item,
+      target: options.target,
+      currentContent: options.currentContent,
+    })
+  ) {
     return {
       proposedContent: options.currentContent,
       hasChanges: false,

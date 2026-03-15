@@ -550,3 +550,181 @@ test("buildTopicMergeContent skips partial-name mentions but parses slack user m
   expect(result.proposedContent).toContain("- (slack:James)");
   expect(result.proposedContent).not.toContain("(slack:Phuoc)");
 });
+
+test("buildTopicMergeContent blocks new decision topic for routine git change", () => {
+  const result = buildTopicMergeContent({
+    currentContent: "",
+    category: "decision",
+    item: {
+      category: "decision",
+      source: "git",
+      summary: "Update icon display and bump version to 1.2.3",
+      keyPoints: [
+        "Fix icon sizing in demo navigation",
+        "Chore: dependency update",
+      ],
+      timeline: ["2026-03-15 - PR merged"],
+      references: [{ source: "git", link: "https://example.com/pr/3001" }],
+    },
+    target: {
+      action: "create_new",
+      shortDescription: "icon-and-version-update",
+      topic: "Icon and version update",
+      tags: ["ui", "release"],
+    },
+    mergedDigestId: "notes/decision_2026-03-15_1.md",
+  });
+
+  expect(result.hasChanges).toBe(false);
+  expect(result.proposedContent).toBe("");
+});
+
+test("buildTopicMergeContent allows new decision topic when rationale appears", () => {
+  const result = buildTopicMergeContent({
+    currentContent: "",
+    category: "decision",
+    item: {
+      category: "decision",
+      source: "git",
+      summary:
+        "Switch rollout path because current deployment keeps failing in edge regions",
+      keyPoints: [
+        "Option A considered but rejected due to rollback risk",
+        "Decision rationale documented for release leads",
+      ],
+      timeline: ["2026-03-15 - Rollout path approved"],
+      references: [{ source: "git", link: "https://example.com/pr/3002" }],
+    },
+    target: {
+      action: "create_new",
+      shortDescription: "rollout-path-decision",
+      topic: "Rollout path decision",
+      tags: ["release"],
+    },
+    mergedDigestId: "notes/decision_2026-03-15_2.md",
+  });
+
+  expect(result.hasChanges).toBe(true);
+  expect(result.proposedContent).toContain("# Rollout path decision");
+  expect(result.proposedContent).toContain("## Decision");
+});
+
+test("buildTopicMergeContent allows new decision topic for architecture impact", () => {
+  const result = buildTopicMergeContent({
+    currentContent: "",
+    category: "decision",
+    item: {
+      category: "decision",
+      source: "git",
+      summary:
+        "Adopt shared event gateway architecture for payment and checkout",
+      keyPoints: [
+        "Cross team migration required across API and web",
+        "Infrastructure policy updated for service boundary ownership",
+      ],
+      timeline: ["2026-03-15 - Architecture direction accepted"],
+      references: [{ source: "git", link: "https://example.com/pr/3003" }],
+    },
+    target: {
+      action: "create_new",
+      shortDescription: "event-gateway-architecture",
+      topic: "Event gateway architecture",
+      tags: ["architecture"],
+    },
+    mergedDigestId: "notes/decision_2026-03-15_3.md",
+  });
+
+  expect(result.hasChanges).toBe(true);
+  expect(result.proposedContent).toContain("# Event gateway architecture");
+});
+
+test("buildTopicMergeContent keeps non-git decision behavior unchanged", () => {
+  const result = buildTopicMergeContent({
+    currentContent: "",
+    category: "decision",
+    item: {
+      category: "decision",
+      source: "slack",
+      summary: "Update icon display and bump version to 1.2.3",
+      keyPoints: [
+        "Fix icon sizing in demo navigation",
+        "Chore: dependency update",
+      ],
+      timeline: ["2026-03-15 - Team aligned"],
+      references: [{ source: "slack", link: "https://example.com/thread" }],
+    },
+    target: {
+      action: "create_new",
+      shortDescription: "icon-and-version-update",
+      topic: "Icon and version update",
+      tags: ["ui", "release"],
+    },
+    mergedDigestId: "notes/decision_2026-03-15_4.md",
+  });
+
+  expect(result.hasChanges).toBe(true);
+  expect(result.proposedContent).toContain("# Icon and version update");
+});
+
+test("buildTopicMergeContent does not block update_existing decision merge", () => {
+  const currentContent = [
+    "---",
+    "category: decision",
+    "created_at: '2026-03-09T00:00:00.000Z'",
+    "updated_at: '2026-03-09T00:00:00.000Z'",
+    "tags:",
+    "  - 'release'",
+    "sources:",
+    "  - git",
+    "digested_note_paths:",
+    "  - 'notes/decision_2026-03-09_1.md'",
+    "---",
+    "",
+    "# Release policy",
+    "",
+    "## Summary",
+    "Existing summary",
+    "",
+    "## Decision",
+    "- Existing decision",
+    "",
+    "## Context",
+    "- None",
+    "",
+    "## Options Considered",
+    "- None",
+    "",
+    "## Rationale / Tradeoffs",
+    "- None",
+    "",
+    "## Stakeholders",
+    "- None",
+    "",
+    "## References",
+    "- git: https://example.com/pr/1000",
+    "",
+  ].join("\n");
+
+  const result = buildTopicMergeContent({
+    currentContent,
+    category: "decision",
+    item: {
+      category: "decision",
+      source: "git",
+      summary: "Update icon display and bump version to 1.2.3",
+      keyPoints: ["Fix icon sizing in demo navigation"],
+      timeline: ["2026-03-15 - PR merged"],
+      references: [{ source: "git", link: "https://example.com/pr/3004" }],
+    },
+    target: {
+      action: "update_existing",
+      slug: "release-policy",
+      topic: "Release policy",
+      tags: ["release"],
+    },
+    mergedDigestId: "notes/decision_2026-03-15_5.md",
+  });
+
+  expect(result.hasChanges).toBe(true);
+  expect(result.proposedContent).toContain("notes/decision_2026-03-15_5.md");
+});
