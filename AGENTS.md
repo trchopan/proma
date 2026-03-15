@@ -148,7 +148,7 @@ If you alter argument behavior, you MUST update:
 ## 6) Data and Markdown Contracts
 
 Digest note files (`notes/*.md`) MUST include:
-- YAML frontmatter (`category`, `source`, `merged`, `merged_topic_paths`)
+- YAML frontmatter (`category`, `source`, `merged`, `input_raw`, `merged_topic_paths`)
 - Sections:
   - `## Summary`
   - `## Key Points`

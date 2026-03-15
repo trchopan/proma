@@ -173,7 +173,8 @@ Report behavior:
 
 Digest note behavior:
 
-- Digest note files include YAML front matter with `category`, `source`, `merged`, and `merged_topic_paths`.
+- Digest note files include YAML front matter with `category`, `source`, `merged`, `input_raw`, and `merged_topic_paths`.
+- `input_raw` stores project-relative input path when the raw file is under `--project`; otherwise it stores absolute input path.
 - `merge` only picks files where `merged` is not `true`.
 
 Topic file behavior:

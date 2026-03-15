@@ -239,6 +239,24 @@ async function defaultConfirmMerge(
   }
 }
 
+function toDigestInputRawPath(projectRoot: string, inputPath: string): string {
+  const relative = path.relative(projectRoot, inputPath);
+  if (!relative || relative === ".") {
+    return inputPath;
+  }
+
+  if (path.isAbsolute(relative)) {
+    return inputPath;
+  }
+
+  const [firstSegment] = relative.split(path.sep);
+  if (firstSegment === "..") {
+    return inputPath;
+  }
+
+  return relative;
+}
+
 async function runDigestCommand(
   parsed: DigestArgs,
   deps: CliDependencies,
@@ -304,6 +322,7 @@ async function runDigestCommand(
   const digestNotes = await deps.writeDigestItems({
     projectRoot,
     items,
+    inputRaw: toDigestInputRawPath(projectRoot, inputPath),
     allowedSources,
   });
 
