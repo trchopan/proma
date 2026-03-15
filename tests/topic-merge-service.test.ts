@@ -336,3 +336,217 @@ test("buildTopicMergeContent normalizes slack identities with and without displa
   expect(result.proposedContent).toContain("- Jordan Vale (slack:TranQuang)");
   expect(result.proposedContent).toContain("- (slack:g-mp-fe)");
 });
+
+test("buildTopicMergeContent prefers display-name identity over handle-only duplicate", () => {
+  const currentContent = [
+    "---",
+    "category: planning",
+    "created_at: '2026-03-09T00:00:00.000Z'",
+    "updated_at: '2026-03-09T00:00:00.000Z'",
+    "tags:",
+    "  - 'release'",
+    "sources:",
+    "  - git",
+    "digested_note_paths:",
+    "---",
+    "",
+    "# Release Update",
+    "",
+    "## Summary",
+    "Existing summary",
+    "",
+    "## Objectives / Success Criteria",
+    "- Existing point",
+    "",
+    "## Scope",
+    "- None",
+    "",
+    "## Deliverables",
+    "- None",
+    "",
+    "## Plan",
+    "- None",
+    "",
+    "## Timeline",
+    "- None",
+    "",
+    "## Teams/Individuals Involved",
+    "- (git:alex-dev)",
+    "",
+    "## References",
+    "- None",
+    "",
+  ].join("\n");
+
+  const result = buildTopicMergeContent({
+    currentContent,
+    category: "planning",
+    item: {
+      category: "planning",
+      source: "git",
+      summary: "PR merged",
+      keyPoints: ["PR merged into release branch."],
+      timeline: ["2026-03-10 - PR merged"],
+      references: [{ source: "git", link: "https://example.com/pr/2600" }],
+    },
+    mergeContent: {
+      category: "planning",
+      summary: "PR merged",
+      objectivesSuccessCriteria: ["Existing point"],
+      scope: [],
+      deliverables: [],
+      plan: [],
+      timeline: ["2026-03-10 - PR merged"],
+      teamsIndividualsInvolved: ["Alex Dev (git:alex-dev)"],
+      references: [{ source: "git", link: "https://example.com/pr/2600" }],
+      tags: ["release"],
+    },
+    target: {
+      action: "update_existing",
+      slug: "release-update",
+      topic: "Release Update",
+      tags: ["release"],
+    },
+    mergedDigestId: "notes/planning_2026-03-10_2.md",
+  });
+
+  expect(result.proposedContent).toContain("- Alex Dev (git:alex-dev)");
+  expect(result.proposedContent).not.toContain(
+    "## Teams/Individuals Involved\n- (git:alex-dev)",
+  );
+});
+
+test("buildTopicMergeContent does not coerce nickname parentheses into handle identities", () => {
+  const currentContent = [
+    "---",
+    "category: planning",
+    "created_at: '2026-03-09T00:00:00.000Z'",
+    "updated_at: '2026-03-09T00:00:00.000Z'",
+    "tags:",
+    "  - 'coordination'",
+    "sources:",
+    "  - slack",
+    "digested_note_paths:",
+    "---",
+    "",
+    "# Team Coordination",
+    "",
+    "## Summary",
+    "Existing summary",
+    "",
+    "## Objectives / Success Criteria",
+    "- Existing point",
+    "",
+    "## Scope",
+    "- None",
+    "",
+    "## Deliverables",
+    "- None",
+    "",
+    "## Plan",
+    "- None",
+    "",
+    "## Timeline",
+    "- None",
+    "",
+    "## Teams/Individuals Involved",
+    "- Tran Ba Quan (Cyan)",
+    "",
+    "## References",
+    "- None",
+    "",
+  ].join("\n");
+
+  const result = buildTopicMergeContent({
+    currentContent,
+    category: "planning",
+    item: {
+      category: "planning",
+      source: "slack",
+      summary: "Coordination update",
+      keyPoints: ["Need FE deployment update."],
+      timeline: ["2026-03-11 - Follow-up"],
+      references: [{ source: "slack", link: "https://example.com/thread" }],
+    },
+    target: {
+      action: "update_existing",
+      slug: "team-coordination",
+      topic: "Team Coordination",
+      tags: ["coordination"],
+    },
+    mergedDigestId: "notes/planning_2026-03-11_2.md",
+  });
+
+  expect(result.proposedContent).toContain("- Tran Ba Quan (Cyan)");
+  expect(result.proposedContent).not.toContain("(slack:Cyan)");
+});
+
+test("buildTopicMergeContent skips partial-name mentions but parses slack user mentions", () => {
+  const currentContent = [
+    "---",
+    "category: planning",
+    "created_at: '2026-03-09T00:00:00.000Z'",
+    "updated_at: '2026-03-09T00:00:00.000Z'",
+    "tags:",
+    "  - 'coordination'",
+    "sources:",
+    "  - slack",
+    "digested_note_paths:",
+    "---",
+    "",
+    "# Team Coordination",
+    "",
+    "## Summary",
+    "Existing summary",
+    "",
+    "## Objectives / Success Criteria",
+    "- Existing point",
+    "",
+    "## Scope",
+    "- None",
+    "",
+    "## Deliverables",
+    "- None",
+    "",
+    "## Plan",
+    "- None",
+    "",
+    "## Timeline",
+    "- None",
+    "",
+    "## Teams/Individuals Involved",
+    "- None",
+    "",
+    "## References",
+    "- None",
+    "",
+  ].join("\n");
+
+  const result = buildTopicMergeContent({
+    currentContent,
+    category: "planning",
+    item: {
+      category: "planning",
+      source: "slack",
+      summary:
+        "@Phuoc Vo asked <@U05SKA6JQBZ|Tran Ba Quan (Cyan)> to review with @g-mp-fe.",
+      keyPoints: ["@James to coordinate next steps."],
+      timeline: ["2026-03-11 - Ownership clarified"],
+      references: [{ source: "slack", link: "https://example.com/thread" }],
+    },
+    target: {
+      action: "update_existing",
+      slug: "team-coordination",
+      topic: "Team Coordination",
+      tags: ["coordination"],
+    },
+    mergedDigestId: "notes/planning_2026-03-11_3.md",
+  });
+
+  expect(result.proposedContent).toContain(
+    "- Tran Ba Quan (Cyan) (slack:U05SKA6JQBZ)",
+  );
+  expect(result.proposedContent).toContain("- (slack:g-mp-fe)");
+  expect(result.proposedContent).toContain("- (slack:James)");
+  expect(result.proposedContent).not.toContain("(slack:Phuoc)");
+});
