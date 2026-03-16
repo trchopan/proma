@@ -6,6 +6,7 @@ import path from "node:path";
 import type { DigestItem, TopicRoutingTarget } from "$/domain/digest/types";
 import {
   allocateNextIndex,
+  chooseConsolidatedTarget,
   collectCategoryTagPool,
   listPendingDigestItems,
   listTopicCandidates,
@@ -70,6 +71,7 @@ test("writeDigestItems writes to notes directory", async () => {
     const written = await writeDigestItems({
       projectRoot: dir,
       items,
+      inputRaw: path.join("raw", "input-1.md"),
       now: new Date("2026-03-09T10:00:00Z"),
     });
 
@@ -83,6 +85,7 @@ test("writeDigestItems writes to notes directory", async () => {
     expect(content).toContain("category: research");
     expect(content).toContain("source: slack");
     expect(content).toContain("merged: false");
+    expect(content).toContain(`input_raw: '${path.join("raw", "input-1.md")}'`);
     expect(content).toContain("merged_topic_paths:");
   });
 });
@@ -99,7 +102,7 @@ test("listPendingDigestItems returns only unmerged digest notes", async () => {
         references: [],
       },
       {
-        category: "discussion",
+        category: "decision",
         source: "slack",
         summary: "Discuss rollout risks.",
         keyPoints: ["Track mitigation"],
@@ -111,6 +114,7 @@ test("listPendingDigestItems returns only unmerged digest notes", async () => {
     const written = await writeDigestItems({
       projectRoot: dir,
       items,
+      inputRaw: path.join("raw", "input-2.md"),
       now: new Date("2026-03-09T10:00:00Z"),
     });
 
@@ -121,12 +125,53 @@ test("listPendingDigestItems returns only unmerged digest notes", async () => {
     const mergedContent = await Bun.file(written[0]?.absolutePath ?? "").text();
     expect(mergedContent).toContain("merged_topic_paths:");
     expect(mergedContent).toContain("topics/planning/sprint-goals.md");
+    expect(mergedContent).toContain(
+      `input_raw: '${path.join("raw", "input-2.md")}'`,
+    );
 
     const pending = await listPendingDigestItems(dir);
 
     expect(pending.map((entry) => entry.relativePath)).toEqual([
-      "notes/discussion_2026-03-09_1.md",
+      "notes/decision_2026-03-09_1.md",
     ]);
+  });
+});
+
+test("listPendingDigestItems supports legacy digest notes without input_raw", async () => {
+  await withTempDir(async (dir) => {
+    const notesDir = path.join(dir, "notes");
+    await mkdir(notesDir, { recursive: true });
+
+    await Bun.write(
+      path.join(notesDir, "planning_2026-03-09_1.md"),
+      [
+        "---",
+        "category: planning",
+        "source: wiki",
+        "merged: false",
+        "merged_topic_paths:",
+        "---",
+        "",
+        "## Summary",
+        "Legacy digest note without input_raw.",
+        "",
+        "## Key Points",
+        "- Preserve backward compatibility",
+        "",
+        "## Timeline",
+        "- 2026-03-09 - Digest created",
+        "",
+        "## References",
+      ].join("\n"),
+    );
+
+    const pending = await listPendingDigestItems(dir);
+
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.relativePath).toBe("notes/planning_2026-03-09_1.md");
+    expect(pending[0]?.item.summary).toBe(
+      "Legacy digest note without input_raw.",
+    );
   });
 });
 
@@ -166,6 +211,10 @@ test("listTopicCandidates reads topic front matter", async () => {
         keyPoints: [],
         timeline: [],
         references: [],
+        digestedCount: 0,
+        updatedAt: "2026-03-09T00:00:00.000Z",
+        timeboxes: [],
+        anchors: [],
       },
     ]);
   });
@@ -190,6 +239,10 @@ test("rankTopicCandidates prioritizes overlapping references and tokens", () => 
         keyPoints: ["Assign PIC"],
         timeline: ["2026-03-10 - Start execution"],
         references: [],
+        digestedCount: 1,
+        updatedAt: "2026-03-10T00:00:00.000Z",
+        timeboxes: [],
+        anchors: [],
       },
       {
         slug: "release-cadence-policy",
@@ -199,12 +252,254 @@ test("rankTopicCandidates prioritizes overlapping references and tokens", () => 
         keyPoints: ["Skip when no agenda"],
         timeline: ["2026-03-13 - Publish decision"],
         references: [{ source: "slack", link: "https://example.com/thread" }],
+        digestedCount: 2,
+        updatedAt: "2026-03-13T00:00:00.000Z",
+        timeboxes: [],
+        anchors: [],
       },
     ],
     8,
   );
 
   expect(ranked[0]?.slug).toBe("release-cadence-policy");
+});
+
+test("rankTopicCandidates enforces hard timebox preference when present", () => {
+  const ranked = rankTopicCandidates(
+    {
+      category: "planning",
+      source: "git",
+      summary: "Update XLT for release/1.12.0",
+      keyPoints: ["Merged PR for release/1.12.0"],
+      timeline: ["2026-03-12 - PR merged"],
+      references: [],
+    },
+    [
+      {
+        slug: "xlt-release-1-13-0",
+        topic: "XLT updates release/1.13.0",
+        tags: ["xlt", "release-1-13-0"],
+        summary: "Track XLT updates for 1.13.0",
+        keyPoints: ["Release 1.13 stream"],
+        timeline: ["2026-03-10 - PR merged"],
+        references: [],
+        digestedCount: 4,
+        updatedAt: "2026-03-10T00:00:00.000Z",
+        timeboxes: ["release-1-13-0"],
+        anchors: ["project-orion-web"],
+      },
+      {
+        slug: "xlt-release-1-12-0",
+        topic: "XLT updates release/1.12.0",
+        tags: ["xlt", "release-1-12-0"],
+        summary: "Track XLT updates for 1.12.0",
+        keyPoints: ["Release 1.12 stream"],
+        timeline: ["2026-03-12 - PR merged"],
+        references: [],
+        digestedCount: 2,
+        updatedAt: "2026-03-12T00:00:00.000Z",
+        timeboxes: ["release-1-12-0"],
+        anchors: ["project-orion-web"],
+      },
+    ],
+    8,
+  );
+
+  expect(ranked[0]?.slug).toBe("xlt-release-1-12-0");
+});
+
+test("chooseConsolidatedTarget keeps create_new when project anchors conflict", () => {
+  const target = chooseConsolidatedTarget({
+    item: {
+      category: "planning",
+      source: "slack",
+      summary: "Project Atlas API deployment readiness for beta",
+      keyPoints: ["Validate Project Atlas rollout"],
+      timeline: ["2026-03-12 - Rollout decision"],
+      references: [],
+    },
+    rankedCandidates: [
+      {
+        slug: "project-orion-web-release-1-12-0",
+        topic: "Project Orion Web release/1.12.0 updates",
+        tags: ["project-orion-web", "release-1-12-0"],
+        summary: "Track Project Orion Web updates",
+        keyPoints: ["Release readiness"],
+        timeline: ["2026-03-12 - Update merged"],
+        references: [],
+        digestedCount: 5,
+        updatedAt: "2026-03-12T00:00:00.000Z",
+        timeboxes: ["release-1-12-0"],
+        anchors: ["project-orion-web"],
+      },
+    ],
+    aiTarget: {
+      action: "create_new",
+      shortDescription: "project-atlas-deployment",
+      topic: "Project Atlas deployment",
+      tags: ["project-atlas-api"],
+    },
+  });
+
+  expect(target.action).toBe("create_new");
+});
+
+test("chooseConsolidatedTarget keeps create_new when candidate misses required timebox", () => {
+  const target = chooseConsolidatedTarget({
+    item: {
+      category: "planning",
+      source: "git",
+      summary: "Update XLT for release/1.12.0",
+      keyPoints: ["Release readiness"],
+      timeline: ["2026-03-12 - PR merged"],
+      references: [],
+    },
+    rankedCandidates: [
+      {
+        slug: "xlt-updates-general",
+        topic: "XLT updates",
+        tags: ["xlt"],
+        summary: "General XLT workstream",
+        keyPoints: ["Track XLT updates"],
+        timeline: [],
+        references: [],
+        digestedCount: 7,
+        updatedAt: "2026-03-12T00:00:00.000Z",
+        timeboxes: [],
+        anchors: ["project-orion-web"],
+      },
+    ],
+    aiTarget: {
+      action: "create_new",
+      shortDescription: "xlt-release-1-12-0",
+      topic: "XLT release/1.12.0",
+      tags: ["xlt", "release-1-12-0"],
+    },
+  });
+
+  expect(target.action).toBe("create_new");
+});
+
+test("chooseConsolidatedTarget converts near-duplicate create_new to update_existing", () => {
+  const target = chooseConsolidatedTarget({
+    item: {
+      category: "planning",
+      source: "git",
+      summary:
+        "Weekly highlights for XLT beta rollout and sentry migration dependency updates",
+      keyPoints: ["Consolidate release stream notes for engineering updates"],
+      timeline: ["2026-03-15 - Weekly update posted"],
+      references: [],
+    },
+    rankedCandidates: [
+      {
+        slug: "sample-portal-weekly-highlights-xlt-beta-rollout-sentry-migration-and-engineering-updates",
+        topic:
+          "Sample Portal weekly highlights: XLT beta rollout, sentry migration and engineering updates",
+        tags: ["sample-portal", "xlt", "weekly-highlights"],
+        summary: "Consolidated weekly highlights for sample portal",
+        keyPoints: ["Engineering updates and migration status"],
+        timeline: ["2026-03-08 - Prior highlights posted"],
+        references: [],
+        digestedCount: 3,
+        updatedAt: "2026-03-14T00:00:00.000Z",
+        timeboxes: [],
+        anchors: ["sample-portal"],
+      },
+    ],
+    aiTarget: {
+      action: "create_new",
+      shortDescription:
+        "sample-portal-weekly-highlights-xlt-beta-rollout-sentry-migration-dependency-and-engineering-updates",
+      topic:
+        "Sample Portal weekly highlights: XLT beta rollout, sentry migration dependency and engineering updates",
+      tags: ["sample-portal", "weekly-highlights"],
+    },
+  });
+
+  expect(target.action).toBe("update_existing");
+  expect(target.slug).toBe(
+    "sample-portal-weekly-highlights-xlt-beta-rollout-sentry-migration-and-engineering-updates",
+  );
+});
+
+test("chooseConsolidatedTarget keeps create_new but adds durable differentiator under hard split", () => {
+  const target = chooseConsolidatedTarget({
+    item: {
+      category: "planning",
+      source: "git",
+      summary: "Dependency updates for project-orion-web release/1.12.0",
+      keyPoints: ["Release readiness updates for project-orion-web"],
+      timeline: ["2026-03-16 - Updates merged into release/1.12.0"],
+      references: [],
+    },
+    rankedCandidates: [
+      {
+        slug: "xlt-dependency-updates-release-1-13-0",
+        topic: "XLT dependency updates release/1.13.0",
+        tags: ["xlt", "release-1-13-0", "project-orion-web"],
+        summary: "Track XLT dependency updates for release 1.13.0",
+        keyPoints: ["Current release stream"],
+        timeline: ["2026-03-12 - Prior release updates merged"],
+        references: [],
+        digestedCount: 4,
+        updatedAt: "2026-03-15T00:00:00.000Z",
+        timeboxes: ["release-1-13-0"],
+        anchors: ["project-orion-web"],
+      },
+    ],
+    aiTarget: {
+      action: "create_new",
+      shortDescription: "xlt-dependency-updates-release-1-13-0",
+      topic: "XLT dependency updates release/1.13.0",
+      tags: ["xlt"],
+    },
+  });
+
+  expect(target.action).toBe("create_new");
+  expect(target.shortDescription).toContain("release-1-12-0");
+  expect(target.topic).toContain("release-1-12-0");
+});
+
+test("chooseConsolidatedTarget downgrades unsafe update_existing to create_new", () => {
+  const target = chooseConsolidatedTarget({
+    item: {
+      category: "planning",
+      source: "git",
+      summary: "Dependency update for project-orion-web release/1.12.0",
+      keyPoints: ["Merged PR for release/1.12.0"],
+      timeline: ["2026-03-12 - PR merged"],
+      references: [
+        {
+          source: "git",
+          link: "https://git.example.com/org/project-orion-web/pull/2601",
+        },
+      ],
+    },
+    rankedCandidates: [
+      {
+        slug: "project-atlas-mixed-topic",
+        topic: "Project Atlas deployment coordination",
+        tags: ["project-atlas-api", "project-orion-web"],
+        summary: "Mixed topic should not be reused",
+        keyPoints: ["Cross-project content"],
+        timeline: ["2026-03-12 - Status update"],
+        references: [],
+        digestedCount: 9,
+        updatedAt: "2026-03-14T00:00:00.000Z",
+        timeboxes: ["release-1-12-0"],
+        anchors: ["project-atlas-api", "project-orion-web"],
+      },
+    ],
+    aiTarget: {
+      action: "update_existing",
+      slug: "project-atlas-mixed-topic",
+      topic: "Project Atlas deployment coordination",
+      tags: ["project-atlas-api"],
+    },
+  });
+
+  expect(target.action).toBe("create_new");
 });
 
 test("collectCategoryTagPool normalizes and deduplicates tags", () => {
@@ -217,6 +512,10 @@ test("collectCategoryTagPool normalizes and deduplicates tags", () => {
       keyPoints: [],
       timeline: [],
       references: [],
+      digestedCount: 0,
+      updatedAt: "",
+      timeboxes: [],
+      anchors: [],
     },
     {
       slug: "b",
@@ -226,6 +525,10 @@ test("collectCategoryTagPool normalizes and deduplicates tags", () => {
       keyPoints: [],
       timeline: [],
       references: [],
+      digestedCount: 0,
+      updatedAt: "",
+      timeboxes: [],
+      anchors: [],
     },
   ]);
 
@@ -243,9 +546,9 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
 
     const plan = await prepareTopicMerge({
       projectRoot: dir,
-      category: "discussion",
+      category: "decision",
       item: {
-        category: "discussion",
+        category: "decision",
         source: "slack",
         summary: "Discussed incident fixes",
         keyPoints: ["Backfill alerts"],
@@ -253,12 +556,12 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
         references: [],
       },
       target,
-      mergedDigestId: "notes/discussion_2026-03-09_1.md",
+      mergedDigestId: "notes/decision_2026-03-09_1.md",
       now: new Date("2026-03-09T10:00:00Z"),
     });
 
     expect(plan.relativeTargetPath).toBe(
-      "topics/discussion/incident-response.md",
+      "topics/decision/incident-response.md",
     );
     expect(plan.proposedContent).toContain("# Incident Response");
     expect(plan.proposedContent).toContain(
@@ -267,21 +570,55 @@ test("prepareTopicMerge creates normalized front matter and merged body", async 
     expect(plan.proposedContent).toContain("  - 'incident-response'");
     expect(plan.proposedContent).toContain("  - 'post-mortem'");
     expect(plan.proposedContent).toContain("## Summary");
-    expect(plan.proposedContent).toContain("## Context/Background");
-    expect(plan.proposedContent).toContain("## Resolution");
-    expect(plan.proposedContent).toContain("## Participants");
+    expect(plan.proposedContent).toContain("## Decision");
+    expect(plan.proposedContent).toContain("## Context");
+    expect(plan.proposedContent).toContain("## Options Considered");
+    expect(plan.proposedContent).toContain("## Rationale / Tradeoffs");
+    expect(plan.proposedContent).toContain("## Stakeholders");
     expect(plan.proposedContent).toContain("## References");
     expect(plan.proposedContent).toContain("digested_note_paths:");
-    expect(plan.proposedContent).toContain("notes/discussion_2026-03-09_1.md");
+    expect(plan.proposedContent).toContain("notes/decision_2026-03-09_1.md");
     expect(plan.proposedContent).not.toContain("source_refs:");
     expect(plan.proposedContent).not.toContain("merged_ingest_ids:");
     expect(plan.hasChanges).toBe(true);
 
     await writePreparedTopicMerge(plan);
     const written = await Bun.file(
-      path.join(dir, "topics", "discussion", "incident-response.md"),
+      path.join(dir, "topics", "decision", "incident-response.md"),
     ).text();
     expect(written).toContain("## Summary");
+  });
+});
+
+test("prepareTopicMerge blocks routine git decision promotion for new topic", async () => {
+  await withTempDir(async (dir) => {
+    const plan = await prepareTopicMerge({
+      projectRoot: dir,
+      category: "decision",
+      item: {
+        category: "decision",
+        source: "git",
+        summary: "Update icon display and bump version to 1.2.3",
+        keyPoints: ["Fix icon sizing in demo navigation", "Chore: update deps"],
+        timeline: ["2026-03-15 - PR merged"],
+        references: [{ source: "git", link: "https://example.com/pr/3010" }],
+      },
+      target: {
+        action: "create_new",
+        shortDescription: "icon-and-version-update",
+        topic: "Icon and version update",
+        tags: ["ui", "release"],
+      },
+      mergedDigestId: "notes/decision_2026-03-15_1.md",
+      now: new Date("2026-03-15T10:00:00Z"),
+    });
+
+    expect(plan.relativeTargetPath).toBe(
+      "topics/decision/icon-and-version-update.md",
+    );
+    expect(plan.isNew).toBe(true);
+    expect(plan.hasChanges).toBe(false);
+    expect(plan.proposedContent).toBe("");
   });
 });
 
@@ -400,21 +737,21 @@ test("resolveReportInputFiles rejects explicit legacy non-topics path", async ()
   });
 });
 
-test("resolveReportInputFiles falls back to topics/planning|research|discussion", async () => {
+test("resolveReportInputFiles falls back to topics/planning|research|decision", async () => {
   await withTempDir(async (dir) => {
     const planningFile = path.join(dir, "topics", "planning", "a.md");
     const researchFile = path.join(dir, "topics", "research", "b.md");
-    const discussionFile = path.join(dir, "topics", "discussion", "c.md");
+    const decisionFile = path.join(dir, "topics", "decision", "c.md");
 
     await mkdir(path.dirname(planningFile), { recursive: true });
     await mkdir(path.dirname(researchFile), { recursive: true });
-    await mkdir(path.dirname(discussionFile), { recursive: true });
+    await mkdir(path.dirname(decisionFile), { recursive: true });
     await Bun.write(planningFile, "# a");
     await Bun.write(researchFile, "# b");
-    await Bun.write(discussionFile, "# c");
+    await Bun.write(decisionFile, "# c");
 
     const resolved = await resolveReportInputFiles(dir, []);
-    expect(resolved).toEqual([planningFile, researchFile, discussionFile]);
+    expect(resolved).toEqual([planningFile, researchFile, decisionFile]);
   });
 });
 

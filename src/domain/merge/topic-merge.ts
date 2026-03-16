@@ -29,6 +29,67 @@ export type BuiltTopicMerge = {
 export const MAX_TOPIC_SLUG_LENGTH = 100;
 export const MAX_TOPIC_TAGS = 12;
 
+const ROUTINE_GIT_DECISION_KEYWORDS = [
+  "update",
+  "updated",
+  "fix",
+  "fixed",
+  "version",
+  "bump",
+  "icon",
+  "chore",
+  "config",
+  "configuration",
+  "rename",
+  "renamed",
+  "refactor",
+  "typo",
+  "deps",
+  "dependency",
+  "dependencies",
+  "lint",
+  "format",
+  "style",
+  "ui tweak",
+  "copy change",
+  "minor",
+] as const;
+
+const DECISION_RATIONALE_KEYWORDS = [
+  "because",
+  "why",
+  "tradeoff",
+  "trade-off",
+  "alternative",
+  "alternatives",
+  "option",
+  "options",
+  "considered",
+  "rationale",
+  "risk",
+  "constraint",
+  "decision",
+] as const;
+
+const SIGNIFICANT_DECISION_IMPACT_KEYWORDS = [
+  "architecture",
+  "architectural",
+  "infrastructure",
+  "infra",
+  "operational policy",
+  "policy",
+  "cross-team",
+  "cross team",
+  "multiple teams",
+  "multi-team",
+  "breaking",
+  "migration",
+  "rollout",
+  "release scope",
+  "platform",
+  "service boundary",
+] as const;
+
 export function slugifyTopic(input: string): string {
   const normalized = input
     .trim()
@@ -252,16 +313,316 @@ function mergeReferences(
   return sortReferences([...mergedReferenceMap.values()]);
 }
 
+function normalizeIdentityHandle(input: string): string {
+  return input
+    .trim()
+    .replace(/^@+/, "")
+    .replace(/[.,;:!?]+$/g, "");
+}
+
+function normalizeIdentityPlatform(source: DigestSource): string {
+  return source.trim().toLowerCase();
+}
+
+function isLikelyIdentityHandle(input: string): boolean {
+  const handle = normalizeIdentityHandle(input);
+  if (handle.length === 0) {
+    return false;
+  }
+
+  if (/^U[A-Z0-9]{8,}$/.test(handle)) {
+    return true;
+  }
+
+  if (/[-_.\d]/.test(handle)) {
+    return true;
+  }
+
+  return handle === handle.toLowerCase();
+}
+
+function parseCanonicalIdentity(
+  entry: string,
+): { platform: string; handle: string; displayName?: string } | null {
+  const fullIdentity = entry.match(
+    /^(.+?)\s*\(\s*([a-z0-9._-]+)\s*:\s*(@?[A-Za-z0-9._-]+)\s*\)$/i,
+  );
+  if (fullIdentity?.[1] && fullIdentity[2] && fullIdentity[3]) {
+    const platform = fullIdentity[2].trim().toLowerCase();
+    const handle = normalizeIdentityHandle(fullIdentity[3]);
+    const displayName = fullIdentity[1].trim();
+    if (platform.length === 0 || handle.length === 0) {
+      return null;
+    }
+
+    return {
+      platform,
+      handle,
+      displayName: displayName.length > 0 ? displayName : undefined,
+    };
+  }
+
+  const handleOnlyIdentity = entry.match(
+    /^\(\s*([a-z0-9._-]+)\s*:\s*(@?[A-Za-z0-9._-]+)\s*\)$/i,
+  );
+  if (!handleOnlyIdentity?.[1] || !handleOnlyIdentity[2]) {
+    return null;
+  }
+
+  const platform = handleOnlyIdentity[1].trim().toLowerCase();
+  const handle = normalizeIdentityHandle(handleOnlyIdentity[2]);
+  if (platform.length === 0 || handle.length === 0) {
+    return null;
+  }
+
+  return {
+    platform,
+    handle,
+  };
+}
+
+function sanitizeDisplayName(input?: string): string | undefined {
+  if (!input) {
+    return undefined;
+  }
+
+  let displayName = input.trim();
+  if (displayName.length === 0) {
+    return undefined;
+  }
+
+  const wrappedInParentheses =
+    displayName.startsWith("(") && displayName.endsWith(")");
+  if (wrappedInParentheses && displayName.length > 2) {
+    displayName = displayName.slice(1, -1).trim();
+  }
+
+  if (displayName.length === 0 || !/[A-Za-z0-9]/.test(displayName)) {
+    return undefined;
+  }
+
+  if (
+    /^[._-]+[A-Za-z0-9._-]*$/.test(displayName) &&
+    !displayName.includes(" ")
+  ) {
+    return undefined;
+  }
+
+  return displayName;
+}
+
+function formatIdentity(options: {
+  platform: string;
+  handle: string;
+  displayName?: string;
+}): string {
+  const handle = normalizeIdentityHandle(options.handle);
+  if (handle.length === 0) {
+    return "";
+  }
+
+  const platform = options.platform.trim().toLowerCase();
+  if (platform.length === 0) {
+    return "";
+  }
+
+  const displayName = sanitizeDisplayName(options.displayName);
+  if (displayName && displayName.length > 0) {
+    return `${displayName} (${platform}:${handle})`;
+  }
+
+  return `(${platform}:${handle})`;
+}
+
+function normalizeParticipantEntry(
+  entry: string,
+  fallbackPlatform: string,
+): string {
+  const trimmed = entry.trim();
+  if (trimmed.length === 0 || trimmed.toLowerCase() === "none") {
+    return "";
+  }
+
+  const canonicalIdentity = parseCanonicalIdentity(trimmed);
+  if (canonicalIdentity) {
+    return formatIdentity(canonicalIdentity);
+  }
+
+  const nameWithHandle = trimmed.match(
+    /^(.+?)\s*\(\s*(@?)([A-Za-z0-9._-]+)\s*\)$/,
+  );
+  if (nameWithHandle?.[1] && nameWithHandle[3]) {
+    const hadAtPrefix = nameWithHandle[2] === "@";
+    if (!hadAtPrefix && !isLikelyIdentityHandle(nameWithHandle[3])) {
+      return trimmed;
+    }
+
+    return formatIdentity({
+      displayName: nameWithHandle[1],
+      platform: fallbackPlatform,
+      handle: nameWithHandle[3],
+    });
+  }
+
+  const handleOnly = trimmed.match(/^(@?)([A-Za-z0-9._-]+)$/);
+  if (handleOnly?.[2]) {
+    const hadAtPrefix = handleOnly[1] === "@";
+    if (!hadAtPrefix && !isLikelyIdentityHandle(handleOnly[2])) {
+      return trimmed;
+    }
+
+    return formatIdentity({
+      platform: fallbackPlatform,
+      handle: handleOnly[2],
+    });
+  }
+
+  return trimmed;
+}
+
+function extractPlanningParticipants(item: DigestItem): string[] {
+  const platform = normalizeIdentityPlatform(item.source);
+  const participantsByIdentity = new Map<string, string>();
+  const sources = [item.summary, ...item.keyPoints].filter(
+    (value) => value.trim().length > 0,
+  );
+
+  const upsertParticipant = (handle: string, displayName?: string) => {
+    const normalizedHandle = normalizeIdentityHandle(handle);
+    if (normalizedHandle.length === 0) {
+      return;
+    }
+
+    const normalized = formatIdentity({
+      platform,
+      handle: normalizedHandle,
+      displayName,
+    });
+    if (normalized.length === 0) {
+      return;
+    }
+
+    const key = `${platform}:${normalizedHandle.toLowerCase()}`;
+    const existing = participantsByIdentity.get(key);
+    if (!existing) {
+      participantsByIdentity.set(key, normalized);
+      return;
+    }
+
+    if (existing.startsWith("(") && !normalized.startsWith("(")) {
+      participantsByIdentity.set(key, normalized);
+    }
+  };
+
+  for (const sourceText of sources) {
+    const slackUserMentionPattern = /<@([A-Z0-9]+)\|([^>]+)>/g;
+    for (const match of sourceText.matchAll(slackUserMentionPattern)) {
+      if (match[1]) {
+        const displayName = match[2]?.trim();
+        upsertParticipant(match[1], displayName);
+      }
+    }
+
+    const explicitNamePattern =
+      /([A-Za-z][A-Za-z0-9.'-]*(?:\s+[A-Za-z][A-Za-z0-9.'-]*){0,5})\s*\(\s*@?([A-Za-z0-9._-]+)\s*\)/g;
+    for (const match of sourceText.matchAll(explicitNamePattern)) {
+      if (match[1] && match[2]) {
+        upsertParticipant(match[2], match[1]);
+      }
+    }
+
+    const roleHandlePattern =
+      /(?:merged by|merged_by|author|assignee|owner|pic)\s*[:-]?\s*(?:([A-Za-z][A-Za-z0-9.'-]*(?:\s+[A-Za-z][A-Za-z0-9.'-]*){0,5})\s*\(\s*@?([A-Za-z0-9][A-Za-z0-9._-]*)\s*\)|@?([A-Za-z0-9][A-Za-z0-9._-]*))/gi;
+    for (const match of sourceText.matchAll(roleHandlePattern)) {
+      const displayName = match[1]?.trim();
+      const handle = (match[2] ?? match[3])?.trim();
+      if (!handle) {
+        continue;
+      }
+
+      const likelyHandle =
+        /[-_.\d]/.test(handle) || handle !== handle.toLowerCase();
+      if (!likelyHandle && !sourceText.includes(`@${handle}`)) {
+        continue;
+      }
+
+      upsertParticipant(handle, displayName);
+    }
+
+    const mentionPattern = /(^|[^\w])@([A-Za-z0-9._-]+)/g;
+    for (const match of sourceText.matchAll(mentionPattern)) {
+      if (match[2]) {
+        const mentionStart = (match.index ?? 0) + (match[1]?.length ?? 0);
+        const mentionEnd = mentionStart + 1 + match[2].length;
+        const trailing = sourceText.slice(mentionEnd);
+        const likelyNameContinuation =
+          /^\s+[A-Z][A-Za-z]/.test(trailing) || /^\s*[/(（]/.test(trailing);
+        if (!isLikelyIdentityHandle(match[2]) && likelyNameContinuation) {
+          continue;
+        }
+
+        upsertParticipant(match[2]);
+      }
+    }
+  }
+
+  return [...participantsByIdentity.values()];
+}
+
+function normalizePlanningParticipants(
+  values: string[],
+  fallbackSource: DigestSource,
+): string[] {
+  const platform = normalizeIdentityPlatform(fallbackSource);
+  const output: string[] = [];
+  const rawSet = new Set<string>();
+  const indexByIdentity = new Map<string, number>();
+
+  for (const value of values) {
+    const normalized = normalizeParticipantEntry(value, platform);
+    if (normalized.length === 0) {
+      continue;
+    }
+
+    const identity = parseCanonicalIdentity(normalized);
+    if (!identity) {
+      if (!rawSet.has(normalized)) {
+        output.push(normalized);
+        rawSet.add(normalized);
+      }
+      continue;
+    }
+
+    const key = `${identity.platform}:${identity.handle.toLowerCase()}`;
+    const rendered = formatIdentity(identity);
+    const existingIndex = indexByIdentity.get(key);
+    if (typeof existingIndex === "undefined") {
+      output.push(rendered);
+      indexByIdentity.set(key, output.length - 1);
+      continue;
+    }
+
+    const existing = output[existingIndex] ?? "";
+    if (existing.startsWith("(") && !rendered.startsWith("(")) {
+      output[existingIndex] = rendered;
+    }
+  }
+
+  return output;
+}
+
 function topicDataFromDigestItem(
   category: DigestCategory,
   item: DigestItem,
 ): TopicDataByCategory {
-  if (category === "discussion") {
+  if (category === "decision") {
     return {
       summary: item.summary,
-      contextBackground: uniqueOrdered(item.keyPoints),
-      resolution: [],
-      participants: [],
+      decision: uniqueOrdered(item.keyPoints),
+      context: [],
+      optionsConsidered: [],
+      rationaleTradeoffs: [],
+      stakeholders: [],
       references: sortReferences(item.references),
     };
   }
@@ -284,7 +645,7 @@ function topicDataFromDigestItem(
     deliverables: [],
     plan: [],
     timeline: [...new Set(item.timeline)].sort((a, b) => a.localeCompare(b)),
-    teamsIndividualsInvolved: [],
+    teamsIndividualsInvolved: extractPlanningParticipants(item),
     references: sortReferences(item.references),
   };
 }
@@ -292,12 +653,14 @@ function topicDataFromDigestItem(
 function topicDataFromMergeContent(
   content: MergeContentResult,
 ): TopicDataByCategory {
-  if (content.category === "discussion") {
+  if (content.category === "decision") {
     return {
       summary: content.summary,
-      contextBackground: content.contextBackground,
-      resolution: content.resolution,
-      participants: content.participants,
+      decision: content.decision,
+      context: content.context,
+      optionsConsidered: content.optionsConsidered,
+      rationaleTradeoffs: content.rationaleTradeoffs,
+      stakeholders: content.stakeholders,
       references: sortReferences(content.references),
     };
   }
@@ -330,28 +693,36 @@ function mergeTopicData(
   existing: TopicDataByCategory,
   incoming: TopicDataByCategory,
 ): TopicDataByCategory {
-  if (category === "discussion") {
-    const existingDiscussion = existing as Extract<
+  if (category === "decision") {
+    const existingDecision = existing as Extract<
       TopicDataByCategory,
-      { contextBackground: string[] }
+      { decision: string[] }
     >;
-    const incomingDiscussion = incoming as Extract<
+    const incomingDecision = incoming as Extract<
       TopicDataByCategory,
-      { contextBackground: string[] }
+      { decision: string[] }
     >;
     return {
       summary: existing.summary || incoming.summary,
-      contextBackground: uniqueOrdered([
-        ...existingDiscussion.contextBackground,
-        ...incomingDiscussion.contextBackground,
+      decision: uniqueOrdered([
+        ...existingDecision.decision,
+        ...incomingDecision.decision,
       ]),
-      resolution: uniqueOrdered([
-        ...existingDiscussion.resolution,
-        ...incomingDiscussion.resolution,
+      context: uniqueOrdered([
+        ...existingDecision.context,
+        ...incomingDecision.context,
       ]),
-      participants: uniqueOrdered([
-        ...existingDiscussion.participants,
-        ...incomingDiscussion.participants,
+      optionsConsidered: uniqueOrdered([
+        ...existingDecision.optionsConsidered,
+        ...incomingDecision.optionsConsidered,
+      ]),
+      rationaleTradeoffs: uniqueOrdered([
+        ...existingDecision.rationaleTradeoffs,
+        ...incomingDecision.rationaleTradeoffs,
+      ]),
+      stakeholders: uniqueOrdered([
+        ...existingDecision.stakeholders,
+        ...incomingDecision.stakeholders,
       ]),
       references: mergeReferences(existing.references, incoming.references),
     };
@@ -422,6 +793,66 @@ function mergeTopicData(
   };
 }
 
+function includesAnyKeyword(
+  value: string,
+  keywords: readonly string[],
+): boolean {
+  return keywords.some((keyword) => value.includes(keyword));
+}
+
+function isLikelyRoutineGitDecisionChange(item: DigestItem): boolean {
+  const text = [item.summary, ...item.keyPoints].join(" ").toLowerCase();
+  const hasRoutineKeyword = includesAnyKeyword(
+    text,
+    ROUTINE_GIT_DECISION_KEYWORDS,
+  );
+  const hasVersionPattern = /\bv?\d+\.\d+(?:\.\d+)?\b/.test(text);
+
+  return hasRoutineKeyword || hasVersionPattern;
+}
+
+function hasDecisionRationaleSignal(item: DigestItem): boolean {
+  const text = [item.summary, ...item.keyPoints].join(" ").toLowerCase();
+  return includesAnyKeyword(text, DECISION_RATIONALE_KEYWORDS);
+}
+
+function hasSignificantDecisionImpactSignal(item: DigestItem): boolean {
+  const text = [item.summary, ...item.keyPoints].join(" ").toLowerCase();
+  return includesAnyKeyword(text, SIGNIFICANT_DECISION_IMPACT_KEYWORDS);
+}
+
+function shouldBlockNewDecisionPromotion(options: {
+  category: DigestCategory;
+  item: DigestItem;
+  target: TopicRoutingTarget;
+  currentContent: string;
+}): boolean {
+  if (options.category !== "decision" || options.item.source !== "git") {
+    return false;
+  }
+
+  const isNewTarget =
+    options.target.action === "create_new" ||
+    options.currentContent.trim().length === 0;
+  if (!isNewTarget) {
+    return false;
+  }
+
+  if (!isLikelyRoutineGitDecisionChange(options.item)) {
+    return false;
+  }
+
+  if (hasDecisionRationaleSignal(options.item)) {
+    return false;
+  }
+
+  if (hasSignificantDecisionImpactSignal(options.item)) {
+    return false;
+  }
+
+  return true;
+}
+
 export function buildTopicMergeContent(options: {
   currentContent: string;
   category: DigestCategory;
@@ -465,11 +896,36 @@ export function buildTopicMergeContent(options: {
     };
   }
 
+  if (
+    shouldBlockNewDecisionPromotion({
+      category: options.category,
+      item: options.item,
+      target: options.target,
+      currentContent: options.currentContent,
+    })
+  ) {
+    return {
+      proposedContent: options.currentContent,
+      hasChanges: false,
+    };
+  }
+
   const incoming =
     options.mergeContent && options.mergeContent.category === options.category
       ? topicDataFromMergeContent(options.mergeContent)
       : topicDataFromDigestItem(options.category, options.item);
   const mergedCanonical = mergeTopicData(options.category, existing, incoming);
+  if (options.category === "planning") {
+    const planning = mergedCanonical as Extract<
+      TopicDataByCategory,
+      { objectivesSuccessCriteria: string[] }
+    >;
+    const extractedParticipants = extractPlanningParticipants(options.item);
+    planning.teamsIndividualsInvolved = normalizePlanningParticipants(
+      [...planning.teamsIndividualsInvolved, ...extractedParticipants],
+      options.item.source,
+    );
+  }
   const stableContent = buildTopicContent({
     existingMetadata: parsed.metadata,
     category: options.category,

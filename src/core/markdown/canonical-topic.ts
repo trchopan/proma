@@ -13,11 +13,13 @@ export type CanonicalTopicData = {
   references: CanonicalReference[];
 };
 
-export type DiscussionTopicData = {
+export type DecisionTopicData = {
   summary: string;
-  contextBackground: string[];
-  resolution: string[];
-  participants: string[];
+  decision: string[];
+  context: string[];
+  optionsConsidered: string[];
+  rationaleTradeoffs: string[];
+  stakeholders: string[];
   references: CanonicalReference[];
 };
 
@@ -42,7 +44,7 @@ export type PlanningTopicData = {
 };
 
 export type TopicDataByCategory =
-  | DiscussionTopicData
+  | DecisionTopicData
   | ResearchTopicData
   | PlanningTopicData;
 
@@ -225,12 +227,14 @@ function parseSections(options: {
 export function emptyTopicDataByCategory(
   category: DigestCategory,
 ): TopicDataByCategory {
-  if (category === "discussion") {
+  if (category === "decision") {
     return {
       summary: "",
-      contextBackground: [],
-      resolution: [],
-      participants: [],
+      decision: [],
+      context: [],
+      optionsConsidered: [],
+      rationaleTradeoffs: [],
+      stakeholders: [],
       references: [],
     };
   }
@@ -359,14 +363,18 @@ export function extractCanonicalTopicData(
   };
 }
 
-function discussionHeadingMap(): Record<string, string> {
+function decisionHeadingMap(): Record<string, string> {
   return {
     summary: "summary",
-    "context/background": "contextBackground",
-    resolution: "resolution",
-    participants: "participants",
+    decision: "decision",
+    context: "context",
+    "options considered": "optionsConsidered",
+    "rationale / tradeoffs": "rationaleTradeoffs",
+    "rationale/tradeoffs": "rationaleTradeoffs",
+    "rationale and tradeoffs": "rationaleTradeoffs",
+    stakeholders: "stakeholders",
     references: "references",
-    "key points": "resolution",
+    "key points": "decision",
   };
 }
 
@@ -407,17 +415,19 @@ export function extractTopicDataByCategory(
       ? [...options.allowedSources]
       : [...DIGEST_SOURCES];
 
-  if (category === "discussion") {
+  if (category === "decision") {
     const parsed = parseSections({
       body,
-      headingMap: discussionHeadingMap(),
+      headingMap: decisionHeadingMap(),
       allowedSources,
     });
     return {
       summary: parsed.summary,
-      contextBackground: parsed.sections.contextBackground ?? [],
-      resolution: parsed.sections.resolution ?? [],
-      participants: parsed.sections.participants ?? [],
+      decision: parsed.sections.decision ?? [],
+      context: parsed.sections.context ?? [],
+      optionsConsidered: parsed.sections.optionsConsidered ?? [],
+      rationaleTradeoffs: parsed.sections.rationaleTradeoffs ?? [],
+      stakeholders: parsed.sections.stakeholders ?? [],
       references: parsed.references,
     };
   }
@@ -464,22 +474,28 @@ export function buildTopicBodyByCategory(
 ): string {
   const summary = data.summary || "No summary yet.";
 
-  if (category === "discussion") {
-    const values = data as DiscussionTopicData;
+  if (category === "decision") {
+    const values = data as DecisionTopicData;
     return [
       `# ${topic}`,
       "",
       "## Summary",
       summary,
       "",
-      "## Context/Background",
-      buildBulletList(values.contextBackground),
+      "## Decision",
+      buildBulletList(values.decision),
       "",
-      "## Resolution",
-      buildBulletList(values.resolution),
+      "## Context",
+      buildBulletList(values.context),
       "",
-      "## Participants",
-      buildBulletList(values.participants),
+      "## Options Considered",
+      buildBulletList(values.optionsConsidered),
+      "",
+      "## Rationale / Tradeoffs",
+      buildBulletList(values.rationaleTradeoffs),
+      "",
+      "## Stakeholders",
+      buildBulletList(values.stakeholders),
       "",
       "## References",
       buildReferencesList(values.references),
@@ -548,14 +564,16 @@ export function topicSignalsFromCategoryData(
   category: DigestCategory,
   data: TopicDataByCategory,
 ): TopicSignalData {
-  if (category === "discussion") {
-    const values = data as DiscussionTopicData;
+  if (category === "decision") {
+    const values = data as DecisionTopicData;
     return {
       summary: values.summary,
       keyPoints: uniqueOrdered([
-        ...values.contextBackground,
-        ...values.resolution,
-        ...values.participants,
+        ...values.decision,
+        ...values.context,
+        ...values.optionsConsidered,
+        ...values.rationaleTradeoffs,
+        ...values.stakeholders,
       ]),
       timeline: [],
       references: values.references,

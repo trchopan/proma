@@ -130,7 +130,7 @@ test("parseReportCommandArgs parses required and repeatable args", () => {
     "--input",
     "topics/planning/release.md",
     "--input",
-    "topics/discussion/incident.md",
+    "topics/decision/incident.md",
     "--base",
     "reports/2026-03-08_weekly.md",
     "--base",
@@ -142,7 +142,7 @@ test("parseReportCommandArgs parses required and repeatable args", () => {
   expect(parsed).toEqual({
     project: "apollo",
     period: "weekly",
-    input: ["topics/planning/release.md", "topics/discussion/incident.md"],
+    input: ["topics/planning/release.md", "topics/decision/incident.md"],
     base: ["reports/2026-03-08_weekly.md", "reports/2026-03-01_weekly.md"],
     model: "gpt-4.1",
     verbose: false,
@@ -186,15 +186,12 @@ test("parseReportCommandArgs rejects invalid period", () => {
 
 test("parseImportCommandArgs parses action-list mode", () => {
   const parsed = parseImportCommandArgs([
-    "--project",
-    "apollo",
     "--server",
     "mcp.slack",
     "--list-actions",
   ]);
 
   expect(parsed).toEqual({
-    project: "apollo",
     server: "mcp.slack",
     listActions: true,
     tool: undefined,
@@ -207,8 +204,6 @@ test("parseImportCommandArgs parses action-list mode", () => {
 
 test("parseImportCommandArgs parses tool-call mode with args and output", () => {
   const parsed = parseImportCommandArgs([
-    "--project",
-    "apollo",
     "--server",
     "mcp.slack",
     "--tool",
@@ -220,7 +215,6 @@ test("parseImportCommandArgs parses tool-call mode with args and output", () => 
   ]);
 
   expect(parsed).toEqual({
-    project: "apollo",
     server: "mcp.slack",
     listActions: false,
     tool: "fetch_thread",
@@ -237,8 +231,6 @@ test("parseImportCommandArgs parses tool-call mode with args and output", () => 
 test("parseImportCommandArgs enforces exclusive mode selection", () => {
   expect(() =>
     parseImportCommandArgs([
-      "--project",
-      "apollo",
       "--server",
       "mcp.slack",
       "--list-actions",
@@ -247,16 +239,14 @@ test("parseImportCommandArgs enforces exclusive mode selection", () => {
     ]),
   ).toThrow("exactly one of");
 
-  expect(() =>
-    parseImportCommandArgs(["--project", "apollo", "--server", "mcp.slack"]),
-  ).toThrow("exactly one of");
+  expect(() => parseImportCommandArgs(["--server", "mcp.slack"])).toThrow(
+    "exactly one of",
+  );
 });
 
 test("parseImportCommandArgs rejects --args without --tool", () => {
   expect(() =>
     parseImportCommandArgs([
-      "--project",
-      "apollo",
       "--server",
       "mcp.slack",
       "--list-actions",
@@ -268,8 +258,6 @@ test("parseImportCommandArgs rejects --args without --tool", () => {
 
 test("parseImportCommandArgs accepts github server target", () => {
   const parsed = parseImportCommandArgs([
-    "--project",
-    "apollo",
     "--server",
     "github",
     "--list-actions",
@@ -280,21 +268,27 @@ test("parseImportCommandArgs accepts github server target", () => {
 
 test("parseImportCommandArgs rejects legacy bare server names", () => {
   expect(() =>
+    parseImportCommandArgs(["--server", "slack", "--list-actions"]),
+  ).toThrow("expected 'github' or 'mcp.<server_name>'");
+});
+
+test("parseImportCommandArgs rejects removed --project argument", () => {
+  expect(() =>
     parseImportCommandArgs([
       "--project",
       "apollo",
       "--server",
-      "slack",
+      "mcp.slack",
       "--list-actions",
     ]),
-  ).toThrow("expected 'github' or 'mcp.<server_name>'");
+  ).toThrow("Unknown argument: --project");
 });
 
 test("runCli import rejects legacy bare server names", async () => {
   const errors: string[] = [];
 
   const exitCode = await runCli(
-    ["import", "--project", "apollo", "--server", "slack", "--list-actions"],
+    ["import", "--server", "slack", "--list-actions"],
     {},
     {
       out: () => {
@@ -467,6 +461,12 @@ test("runCli report defaults period to weekly when omitted", async () => {
 
 test("runCli digest writes stage 1 files only", async () => {
   const output: string[] = [];
+  let capturedWriteOptions:
+    | {
+        projectRoot: string;
+        inputRaw: string;
+      }
+    | undefined;
   const mockItems: DigestItem[] = [
     {
       category: "planning",
@@ -479,17 +479,24 @@ test("runCli digest writes stage 1 files only", async () => {
   ];
 
   const exitCode = await runCli(
-    ["digest", "--input", "./input.txt", "--project", "apollo"],
+    ["digest", "--input", "./apollo/raw/input.txt", "--project", "apollo"],
     {
       readTextFile: async () => "raw text",
       generateDigestItems: async () => mockItems,
-      writeDigestItems: async () => [
-        {
-          item: mockItems[0] as DigestItem,
-          absolutePath: "/tmp/apollo/notes/planning_2026-03-09_1.md",
-          relativePath: "notes/planning_2026-03-09_1.md",
-        },
-      ],
+      writeDigestItems: async (options) => {
+        capturedWriteOptions = {
+          projectRoot: options.projectRoot,
+          inputRaw: options.inputRaw,
+        };
+
+        return [
+          {
+            item: mockItems[0] as DigestItem,
+            absolutePath: "/tmp/apollo/notes/planning_2026-03-09_1.md",
+            relativePath: "notes/planning_2026-03-09_1.md",
+          },
+        ];
+      },
       listPendingDigestItems: async () => {
         throw new Error("listPendingDigestItems should not be called");
       },
@@ -509,6 +516,47 @@ test("runCli digest writes stage 1 files only", async () => {
 
   expect(exitCode).toBe(0);
   expect(output).toContain("Wrote 1 digest file(s):");
+  expect(capturedWriteOptions).toEqual({
+    projectRoot: path.resolve("apollo"),
+    inputRaw: path.join("raw", "input.txt"),
+  });
+});
+
+test("runCli digest stores absolute input_raw when input is outside project root", async () => {
+  let capturedInputRaw: string | undefined;
+  const mockItems: DigestItem[] = [
+    {
+      category: "planning",
+      source: "wiki",
+      summary: "Plan sprint goals.",
+      keyPoints: ["Align scope"],
+      timeline: ["2026-03-09 - Sprint planning kickoff"],
+      references: [],
+    },
+  ];
+
+  const exitCode = await runCli(
+    ["digest", "--input", "./outside/input.txt", "--project", "apollo"],
+    {
+      readTextFile: async () => "raw text",
+      generateDigestItems: async () => mockItems,
+      writeDigestItems: async (options) => {
+        capturedInputRaw = options.inputRaw;
+        return [];
+      },
+    },
+    {
+      out: () => {
+        return;
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(capturedInputRaw).toBe(path.resolve("./outside/input.txt"));
 });
 
 test("runCli digest with --dry-run does not write stage 1 files", async () => {
@@ -696,6 +744,161 @@ test("runCli merge with --dry-run does not write files", async () => {
     "Dry run: would mark digest note as merged: /tmp/apollo/notes/planning_2026-03-09_1.md",
   );
   expect(output).toContain("Would mark 1 digest note(s) as merged.");
+});
+
+test("runCli merge promotes create_new to update_existing for strong same-timebox match", async () => {
+  const output: string[] = [];
+  let capturedTargetAction = "";
+  let capturedTargetSlug = "";
+  const mockItem: DigestItem = {
+    category: "planning",
+    source: "git",
+    summary: "Update project-orion-web dependencies in release/1.12.0",
+    keyPoints: ["project-orion-web release stream merged"],
+    timeline: ["2026-03-12 - PR merged"],
+    references: [
+      {
+        source: "git",
+        link: "https://git.example.com/org/project-orion-web/pull/2601",
+      },
+    ],
+  };
+
+  const exitCode = await runCli(
+    ["merge", "--project", "apollo", "--dry-run"],
+    {
+      listPendingDigestItems: async () => [
+        {
+          item: mockItem,
+          absolutePath: "/tmp/apollo/notes/planning_2026-03-12_1.md",
+          relativePath: "notes/planning_2026-03-12_1.md",
+        },
+      ],
+      listTopicCandidates: async () => [
+        {
+          slug: "project-orion-web-deps-release-1-12-0",
+          topic: "Project Orion Web dependency updates (release/1.12.0)",
+          tags: ["dependencies", "release-1-12-0", "project-orion-web"],
+          summary: "Consolidated XLT updates for release/1.12.0",
+          keyPoints: ["Track dependency updates"],
+          timeline: ["2026-03-04 - Initial XLT merge"],
+          references: [
+            {
+              source: "git",
+              link: "https://git.example.com/org/project-orion-web/pull/2592",
+            },
+          ],
+          digestedCount: 3,
+          updatedAt: "2026-03-12T00:00:00.000Z",
+          timeboxes: ["release-1-12-0"],
+          anchors: ["project-orion-web"],
+        },
+      ],
+      rankTopicCandidates: (_item, candidates) => candidates,
+      collectCategoryTagPool: () => ["xlt", "release-1-12-0"],
+      generateTopicTarget: async () => ({
+        action: "create_new",
+        shortDescription: "new-xlt-note",
+        topic: "New XLT Note",
+        tags: ["xlt"],
+      }),
+      prepareTopicMerge: async (options) => {
+        capturedTargetAction = options.target.action;
+        capturedTargetSlug = options.target.slug ?? "";
+        return {
+          targetPath:
+            "/tmp/apollo/topics/planning/project-orion-web-deps-release-1-12-0.md",
+          relativeTargetPath:
+            "topics/planning/project-orion-web-deps-release-1-12-0.md",
+          currentContent: "before",
+          proposedContent: "before",
+          isNew: false,
+          hasChanges: false,
+        };
+      },
+      confirmMerge: async () => true,
+    },
+    {
+      out: (message) => {
+        output.push(message);
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(capturedTargetAction).toBe("update_existing");
+  expect(capturedTargetSlug).toBe("project-orion-web-deps-release-1-12-0");
+  expect(output).toContain("Found 1 pending digest file(s).");
+});
+
+test("runCli merge keeps create_new with differentiated identity for hard-split near-duplicate", async () => {
+  let capturedAction = "";
+  let capturedShortDescription = "";
+  let capturedTopic = "";
+
+  const exitCode = await runCli(["merge", "--project", "apollo", "--dry-run"], {
+    listPendingDigestItems: async () => [
+      {
+        item: {
+          category: "planning",
+          source: "git",
+          summary: "Dependency updates for project-orion-web release/1.12.0",
+          keyPoints: ["Keep release stream updates in one topic"],
+          timeline: ["2026-03-16 - Updates merged"],
+          references: [],
+        },
+        absolutePath: "/tmp/apollo/notes/planning_2026-03-16_1.md",
+        relativePath: "notes/planning_2026-03-16_1.md",
+      },
+    ],
+    listTopicCandidates: async () => [
+      {
+        slug: "xlt-dependency-updates-release-1-13-0",
+        topic: "XLT dependency updates release/1.13.0",
+        tags: ["xlt", "release-1-13-0", "project-orion-web"],
+        summary: "Existing release stream topic",
+        keyPoints: ["Existing release scope"],
+        timeline: ["2026-03-14 - Prior updates"],
+        references: [],
+        digestedCount: 4,
+        updatedAt: "2026-03-14T00:00:00.000Z",
+        timeboxes: ["release-1-13-0"],
+        anchors: ["project-orion-web"],
+      },
+    ],
+    rankTopicCandidates: (_item, candidates) => candidates,
+    collectCategoryTagPool: () => ["xlt", "project-orion-web"],
+    generateTopicTarget: async () => ({
+      action: "create_new",
+      shortDescription: "xlt-dependency-updates-release-1-13-0",
+      topic: "XLT dependency updates release/1.13.0",
+      tags: ["xlt"],
+    }),
+    prepareTopicMerge: async (options) => {
+      capturedAction = options.target.action;
+      capturedShortDescription = options.target.shortDescription ?? "";
+      capturedTopic = options.target.topic;
+      return {
+        targetPath:
+          "/tmp/apollo/topics/planning/xlt-dependency-updates-release-1-12-0.md",
+        relativeTargetPath:
+          "topics/planning/xlt-dependency-updates-release-1-12-0.md",
+        currentContent: "",
+        proposedContent: "after",
+        isNew: true,
+        hasChanges: true,
+      };
+    },
+    confirmMerge: async () => true,
+  });
+
+  expect(exitCode).toBe(0);
+  expect(capturedAction).toBe("create_new");
+  expect(capturedShortDescription).toContain("release-1-12-0");
+  expect(capturedTopic).toContain("release-1-12-0");
 });
 
 test("runCli merge with --auto-merge prints diff and skips confirmation", async () => {
@@ -888,14 +1091,7 @@ test("runCli import lists actions", async () => {
   const output: string[] = [];
 
   const exitCode = await runCli(
-    [
-      "import",
-      "--project",
-      "apollo",
-      "--server",
-      "mcp.slack",
-      "--list-actions",
-    ],
+    ["import", "--server", "mcp.slack", "--list-actions"],
     {
       loadProjectConfig: async () => ({
         mcp: {
@@ -928,14 +1124,12 @@ test("runCli import lists actions", async () => {
   expect(output).toContain("- fetch_thread: Fetch Slack thread as markdown");
 });
 
-test("runCli import tool call writes markdown output", async () => {
+test("runCli import tool call prints markdown output by default", async () => {
   const output: string[] = [];
 
   const exitCode = await runCli(
     [
       "import",
-      "--project",
-      "apollo",
       "--server",
       "mcp.slack",
       "--tool",
@@ -952,15 +1146,13 @@ test("runCli import tool call writes markdown output", async () => {
           },
         },
       }),
-      resolveImportOutputPath: async () => "/tmp/apollo/imports/slack.md",
       callMcpTool: async () => ({
         content: [{ type: "text", text: "Imported" }],
       }),
       renderImportedMarkdown: () => "# Imported",
-      writeImportedMarkdown: async () => ({
-        absolutePath: "/tmp/apollo/imports/slack.md",
-        relativePath: "imports/slack.md",
-      }),
+      writeImportedMarkdown: async () => {
+        throw new Error("writeImportedMarkdown should not be called");
+      },
     },
     {
       out: (message) => {
@@ -976,24 +1168,23 @@ test("runCli import tool call writes markdown output", async () => {
   expect(output).toContain(
     "Calling MCP tool 'fetch_thread' on server 'mcp.slack'...",
   );
-  expect(output).toContain(
-    "Wrote imported markdown: /tmp/apollo/imports/slack.md",
-  );
+  expect(output).toContain("# Imported");
 });
 
-test("runCli import dry-run avoids MCP calls and writes", async () => {
+test("runCli import tool call writes markdown output when --output is provided", async () => {
   const output: string[] = [];
 
   const exitCode = await runCli(
     [
       "import",
-      "--project",
-      "apollo",
       "--server",
       "mcp.slack",
       "--tool",
       "fetch_thread",
-      "--dry-run",
+      "--args",
+      '{"channel":"C123"}',
+      "--output",
+      "/tmp/apollo/imports/slack.md",
     ],
     {
       loadProjectConfig: async () => ({
@@ -1004,7 +1195,45 @@ test("runCli import dry-run avoids MCP calls and writes", async () => {
           },
         },
       }),
-      resolveImportOutputPath: async () => "/tmp/apollo/imports/slack.md",
+      callMcpTool: async () => ({
+        content: [{ type: "text", text: "Imported" }],
+      }),
+      renderImportedMarkdown: () => "# Imported",
+      writeImportedMarkdown: async () => ({
+        absolutePath: "/tmp/apollo/imports/slack.md",
+        relativePath: "slack.md",
+      }),
+    },
+    {
+      out: (message) => {
+        output.push(message);
+      },
+      err: () => {
+        return;
+      },
+    },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(output).toContain(
+    "Wrote imported markdown: /tmp/apollo/imports/slack.md",
+  );
+});
+
+test("runCli import dry-run avoids MCP calls and writes", async () => {
+  const output: string[] = [];
+
+  const exitCode = await runCli(
+    ["import", "--server", "mcp.slack", "--tool", "fetch_thread", "--dry-run"],
+    {
+      loadProjectConfig: async () => ({
+        mcp: {
+          slack: {
+            type: "local",
+            command: ["bun", "./fake-mcp.ts"],
+          },
+        },
+      }),
       callMcpTool: async () => {
         throw new Error("callMcpTool should not be called");
       },
@@ -1023,23 +1252,14 @@ test("runCli import dry-run avoids MCP calls and writes", async () => {
   );
 
   expect(exitCode).toBe(0);
-  expect(output).toContain(
-    "Dry run: would write imported markdown to /tmp/apollo/imports/slack.md",
-  );
+  expect(output).toContain("Dry run: would print imported markdown to stdout");
 });
 
 test("runCli import loads config from current working directory", async () => {
   let capturedConfigRoot = "";
 
   const exitCode = await runCli(
-    [
-      "import",
-      "--project",
-      "tmp/acme",
-      "--server",
-      "mcp.slack",
-      "--list-actions",
-    ],
+    ["import", "--server", "mcp.slack", "--list-actions"],
     {
       loadProjectConfig: async (projectRoot) => {
         capturedConfigRoot = projectRoot;
@@ -1072,7 +1292,7 @@ test("runCli import github lists actions without MCP config", async () => {
   const output: string[] = [];
 
   const exitCode = await runCli(
-    ["import", "--project", "apollo", "--server", "github", "--list-actions"],
+    ["import", "--server", "github", "--list-actions"],
     {
       loadProjectConfig: async () => ({}),
       listGithubTools: () => [
@@ -1206,14 +1426,14 @@ test("runCli import github tool call writes markdown output", async () => {
   const exitCode = await runCli(
     [
       "import",
-      "--project",
-      "apollo",
       "--server",
       "github",
       "--tool",
       "pr_get",
       "--args",
       '{"owner":"acme","repo":"platform","number":42}',
+      "--output",
+      "/tmp/apollo/imports/github-pr.md",
     ],
     {
       loadProjectConfig: async () => ({
@@ -1221,7 +1441,6 @@ test("runCli import github tool call writes markdown output", async () => {
           host: "git.example.com",
         },
       }),
-      resolveImportOutputPath: async () => "/tmp/apollo/imports/github-pr.md",
       callGithubTool: async ({ host }) => {
         capturedHost = host;
         return {

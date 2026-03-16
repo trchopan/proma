@@ -113,20 +113,21 @@ proma report --project ./acme --period weekly
 proma report --project ./acme --period weekly --dry-run
 
 # import action discovery
-proma import --project ./acme --server mcp.slack --list-actions
-proma import --project ./acme --server mcp.slack --list-actions --verbose
+proma import --server mcp.slack --list-actions
+proma import --server mcp.slack --list-actions --verbose
 
 # import GitHub actions (uses local gh auth)
-proma import --project ./acme --server github --list-actions
+proma import --server github --list-actions
 
-# import tool call
-proma import --project ./acme --server mcp.slack --tool fetch_thread --args '{"channel":"C123","thread_ts":"1710.123"}'
-proma import --project ./acme --server mcp.slack --tool fetch_thread --args '{"channel":"C123"}' --output ./acme/imports/slack-thread.md
+# import tool call (default: prints markdown to stdout)
+proma import --server mcp.slack --tool fetch_thread --args '{"channel":"C123","thread_ts":"1710.123"}'
+proma import --server mcp.slack --tool fetch_thread --args '{"channel":"C123"}' > ./acme/imports/slack-thread.md
+proma import --server mcp.slack --tool fetch_thread --args '{"channel":"C123"}' --output ./acme/imports/slack-thread.md
 
 # import GitHub issue / PR data
-proma import --project ./acme --server github --tool issue_get --args '{"owner":"acme","repo":"platform","number":123}'
-proma import --project ./acme --server github --tool pr_get --args '{"owner":"acme","repo":"platform","number":456}'
-proma import --project ./acme --server github --tool prs_list --args '{"owner":"acme","repo":"platform","author":"alice","state":"all","per_page":20,"page":1}'
+proma import --server github --tool issue_get --args '{"owner":"acme","repo":"platform","number":123}'
+proma import --server github --tool pr_get --args '{"owner":"acme","repo":"platform","number":456}'
+proma import --server github --tool prs_list --args '{"owner":"acme","repo":"platform","author":"alice","state":"all","per_page":20,"page":1}'
 
 # handoff from import -> digest
 proma digest --project ./acme --input ./acme/imports/2026-03-12_slack_fetch-thread.md
@@ -134,7 +135,7 @@ proma digest --project ./acme --input ./acme/imports/2026-03-12_slack_fetch-thre
 # report with explicit topic inputs + base reports
 proma report --project ./acme --period weekly \
   --input ./acme/topics/planning/release-readiness.md \
-  --input ./acme/topics/discussion/incident-response.md \
+  --input ./acme/topics/decision/incident-response.md \
   --base ./acme/reports/2026-03-01_weekly.md \
   --base ./acme/reports/2026-03-08_weekly.md
 ```
@@ -149,28 +150,31 @@ Optional flags:
 - `--server`: for `import` only, must be either built-in `github` or `mcp.<server_name>` from project config.
 - `--list-actions`: for `import` only, lists MCP actions for the selected server.
 - `--tool <name>` + `--args <json>`: for `import` only, executes one MCP tool call with JSON object arguments.
+- `--output <file>`: for `import` only, writes markdown output to the provided file path. When omitted, import prints markdown to stdout.
 
 Note: the digest flow uses OpenAI Structured Outputs (`json_schema`) and fails fast if the selected model does not support it.
 
 ## File layout and behavior
 
-`--project` is the root output directory.
+`--project` is the root output directory for `digest`, `merge`, and `report`.
+
+`import` is project-free: it prints markdown to stdout by default and only writes files when `--output <file>` is provided.
 
 - Raw digest notes: `<project>/notes/<category>_<YYYY-MM-DD>_<index>.md`
-- Imported raw markdown: `<project>/imports/<YYYY-MM-DD>_<server>_<tool>.md` (collision fallback: `_2`, `_3`, ...)
 - Topic files from `merge`: `<project>/topics/<category>/<topic-slug>.md`
 - Reports: `<project>/reports/<YYYY-MM-DD>_<period>.md` (collision fallback: `_2`, `_3`, ...)
 
 Report behavior:
 
 - `--period` is optional; default is `weekly`. Valid values: `daily`, `weekly`, `bi-weekly`, `monthly`.
-- Repeat `--input` to target specific markdown files; when omitted, the CLI scans markdown files under `<project>/topics/planning`, `<project>/topics/research`, and `<project>/topics/discussion`.
+- Repeat `--input` to target specific markdown files; when omitted, the CLI scans markdown files under `<project>/topics/planning`, `<project>/topics/research`, and `<project>/topics/decision`.
 - Repeat `--base` to provide specific previous reports; when omitted, the CLI loads markdown files under `<project>/reports`.
 - Report files include YAML front matter with `period`, `generated_at`, `model`, `input_files`, and `base_reports`.
 
 Digest note behavior:
 
-- Digest note files include YAML front matter with `category`, `source`, `merged`, and `merged_topic_paths`.
+- Digest note files include YAML front matter with `category`, `source`, `merged`, `input_raw`, and `merged_topic_paths`.
+- `input_raw` stores project-relative input path when the raw file is under `--project`; otherwise it stores absolute input path.
 - `merge` only picks files where `merged` is not `true`.
 
 Topic file behavior:
@@ -181,12 +185,22 @@ Topic file behavior:
 - Tag metadata is normalized to lowercase kebab-case, deduplicated, and sorted; merge prefers reusing existing category tags before adding new ones.
 - New topic slugs are normalized to kebab-case and capped at 100 characters.
 - Topic files are canonical-only and category-specific:
-  - `discussion`: `Summary`, `Context/Background`, `Resolution`, `Participants`, `References`
+  - `decision`: `Summary`, `Decision`, `Context`, `Options Considered`, `Rationale / Tradeoffs`, `Stakeholders`, `References`
   - `research`: `Summary`, `Problem Statement`, `Research Plan`, `Key Findings`, `Person in Charge`, `References`
   - `planning`: `Summary`, `Objectives / Success Criteria`, `Scope`, `Deliverables`, `Plan`, `Timeline`, `Teams/Individuals Involved`, `References`
+- Planning participant identity formatting (when handles are available):
+  - full identity: `Display Name (platform:identity handle)`
+  - handle-only identity: `(platform:identity handle)`
+  - platform label follows source naming (for example `git`, `slack`)
 - Merge routes each digest note to exactly one primary topic target.
+- Merge prefers durable workstream-level topics over note/PR-specific topic files across all sources (`git`, `slack`, `wiki`, `document`).
+- Timebox signals (for example `release/x.y.z`, `sprint-<n>`, `Qn-YYYY`) are treated as hard split boundaries when present.
+- Project/product identity signals (for example `project-atlas-api`, `project-orion-web`) are treated as hard split boundaries to avoid cross-project topic contamination.
+- If AI proposes `create_new` with a near-duplicate topic identity (topic/slug overlap) and no hard split conflict, merge auto-consolidates to `update_existing` for the closest candidate.
+- If a hard split boundary requires `create_new` in a near-duplicate scenario, merge enforces differentiated topic identity using durable scope markers (for example release or project/service anchors).
 - Merge pre-ranks candidates deterministically and sends only the top 8 candidates to routing.
 - Merge applies semantic content refinement to reduce unrelated/duplicated key points and timeline entries, with deterministic fallback on failure.
+- Merge uses a decision-promotion threshold for new `git`-sourced decision topics: routine implementation changes without explicit rationale/tradeoffs or significant architecture/infra/policy impact are not promoted into new decision topic files.
 - Repeated ingestion of already-merged references becomes a no-op (`No topic change`).
 - After topic targets are selected, the CLI shows a diff preview for each proposed merge. By default it asks for confirmation (`y` to apply, default `N` to skip); with `--auto-merge`, it applies automatically without prompting.
 

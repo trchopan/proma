@@ -104,6 +104,43 @@ test("parseDigestItemsResponse rejects invalid category", () => {
   );
 });
 
+test("parseDigestItemsResponse accepts decision category", () => {
+  const response = JSON.stringify({
+    items: [
+      {
+        category: "decision",
+        source: "slack",
+        summary: "Choose rollout strategy for API gateway.",
+        keyPoints: ["Adopt blue/green rollout"],
+        timeline: ["2026-04-15 - Rollout strategy approved"],
+        references: [],
+      },
+    ],
+  });
+
+  const items = parseDigestItemsResponse(response);
+  expect(items[0]?.category).toBe("decision");
+});
+
+test("parseDigestItemsResponse rejects legacy discussion category", () => {
+  const response = JSON.stringify({
+    items: [
+      {
+        category: "discussion",
+        source: "slack",
+        summary: "Legacy category should fail",
+        keyPoints: [],
+        timeline: [],
+        references: [],
+      },
+    ],
+  });
+
+  expect(() => parseDigestItemsResponse(response)).toThrow(
+    "Digest item contained invalid category",
+  );
+});
+
 test("renderDigestMarkdown always includes required sections", () => {
   const item: DigestItem = {
     category: "research",
@@ -139,6 +176,25 @@ test("parseDigestItemsResponse rejects invalid reference source", () => {
 
   expect(() => parseDigestItemsResponse(response)).toThrow(
     "Digest item contained invalid reference source",
+  );
+});
+
+test("parseDigestItemsResponse rejects empty reference link", () => {
+  const response = JSON.stringify({
+    items: [
+      {
+        category: "planning",
+        source: "slack",
+        summary: "Reference link should fail",
+        keyPoints: [],
+        timeline: ["2026-04-15 - Context"],
+        references: [{ source: "slack", link: "" }],
+      },
+    ],
+  });
+
+  expect(() => parseDigestItemsResponse(response)).toThrow(
+    "Digest item contained empty reference link",
   );
 });
 
@@ -202,7 +258,41 @@ test("generateDigestItems passes strict structured output format", async () => {
 
   expect(promptText).toContain("You classify notes into digest items");
   expect(promptText).toContain("slack, wiki, git, document");
+  expect(promptText).toContain(
+    "When source content includes explicit ownership/actor identities",
+  );
+  expect(promptText).toContain(
+    "Timeline entries must represent substantive events",
+  );
+  expect(promptText).toContain(
+    "Do not include ingestion or tooling metadata in timeline",
+  );
+  expect(promptText).toContain(
+    "If no substantive dated event is present, return an empty timeline array.",
+  );
+  expect(promptText).toContain(
+    "Each reference link must be a non-empty, source-backed URL or locator string",
+  );
   expect(promptText).toContain("Some input");
+});
+
+test("digest response schema requires non-empty reference links", () => {
+  const itemSchema = DIGEST_RESPONSE_SCHEMA.properties.items
+    .items as unknown as {
+    properties: {
+      references: {
+        items: {
+          properties: {
+            link: { minLength?: number };
+          };
+        };
+      };
+    };
+  };
+
+  expect(itemSchema.properties.references.items.properties.link.minLength).toBe(
+    1,
+  );
 });
 
 test("generateDigestItems includes image parts for multimodal prompt", async () => {
@@ -303,6 +393,49 @@ test("parseTopicRoutingResponse rejects unknown slug for update target", () => {
   ).toThrow("unknown slug");
 });
 
+test("parseTopicRoutingResponse rejects null slug for update_existing", () => {
+  const response = JSON.stringify({
+    target: {
+      action: "update_existing",
+      slug: null,
+      topic: "Known",
+      tags: [],
+    },
+  });
+
+  expect(() =>
+    parseTopicRoutingResponse(response, [
+      {
+        slug: "known-topic",
+        topic: "Known",
+        tags: [],
+        summary: "Known summary",
+        keyPoints: [],
+        timeline: [],
+        references: [],
+      },
+    ]),
+  ).toThrow("must include a slug");
+});
+
+test("topic routing schema stays OpenAI-compatible with flat target object", () => {
+  const targetSchema = TOPIC_ROUTING_RESPONSE_SCHEMA.properties
+    .target as unknown as {
+    type: string;
+    properties: {
+      action: { enum: string[] };
+      slug: { type: string[] };
+    };
+  };
+
+  expect(targetSchema.type).toBe("object");
+  expect(targetSchema.properties.action.enum).toEqual([
+    "update_existing",
+    "create_new",
+  ]);
+  expect(targetSchema.properties.slug.type).toEqual(["string", "null"]);
+});
+
 test("generateTopicTarget passes candidate slugs and strict schema", async () => {
   let capturedOptions:
     | {
@@ -375,7 +508,28 @@ test("generateTopicTarget passes candidate slugs and strict schema", async () =>
     messages?.map((message) => message.content).join("\n") ?? "";
 
   expect(promptText).toContain("You route digest items to topic files");
+  expect(promptText).toContain("classify artifact_type internally");
+  expect(promptText).toContain(
+    "Only canonical_topic should justify create_new",
+  );
+  expect(promptText).toContain(
+    "create_new must still be a broad durable roll-up topic",
+  );
+  expect(promptText).toContain(
+    "If action is update_existing, slug must be a non-empty slug",
+  );
+  expect(promptText).toContain(
+    "If no candidate slug is suitable, use create_new instead",
+  );
+  expect(promptText).not.toContain("No canonical topic required");
   expect(promptText).toContain("release-readiness");
+  expect(promptText).toContain("workstream-level canonical topics");
+  expect(promptText).toContain("Treat timebox as a hard split key");
+  expect(promptText).toContain(
+    "Treat product/project identity as a hard split key",
+  );
+  expect(promptText).toContain("Avoid near-duplicate create_new identities");
+  expect(promptText).toContain("include at least one durable differentiator");
 });
 
 test("parseMergeContentResponse validates canonical merge payload", () => {
@@ -407,9 +561,42 @@ test("parseMergeContentResponse validates canonical merge payload", () => {
   ]);
 });
 
+test("parseMergeContentResponse parses decision merge payload", () => {
+  const response = JSON.stringify({
+    category: "decision",
+    summary: "Adopt blue/green deployment for API gateway rollout.",
+    decision: ["Proceed with blue/green deployment for v2 API gateway."],
+    context: ["Canary-only approach increased rollback complexity."],
+    optionsConsidered: [
+      "Keep canary rollout as-is",
+      "Use blue/green with staged traffic shift",
+    ],
+    rationaleTradeoffs: [
+      "Blue/green improves rollback at the cost of temporary infra overhead.",
+    ],
+    stakeholders: ["Platform Team", "SRE"],
+    references: [{ source: "slack", link: "https://example.com/thread" }],
+    tags: ["api-gateway", "rollout"],
+  });
+
+  const parsed = parseMergeContentResponse(response, {
+    category: "decision",
+  });
+
+  expect(parsed.category).toBe("decision");
+  if (parsed.category !== "decision") {
+    throw new Error("Expected decision merge payload");
+  }
+  expect(parsed.decision).toEqual([
+    "Proceed with blue/green deployment for v2 API gateway.",
+  ]);
+  expect(parsed.stakeholders).toEqual(["Platform Team", "SRE"]);
+});
+
 test("generateMergeContent uses strict schema", async () => {
   let capturedOptions:
     | {
+        messages?: unknown;
         responseFormat?: unknown;
       }
     | undefined;
@@ -444,7 +631,10 @@ test("generateMergeContent uses strict schema", async () => {
       promptRegistry: createBuiltInPromptRegistry(),
     },
     async (options) => {
-      capturedOptions = { responseFormat: options.responseFormat };
+      capturedOptions = {
+        messages: options.messages,
+        responseFormat: options.responseFormat,
+      };
       return JSON.stringify({
         category: "planning",
         summary: "Refined summary",
@@ -469,6 +659,18 @@ test("generateMergeContent uses strict schema", async () => {
       schema: MERGE_CONTENT_RESPONSE_SCHEMA,
     },
   });
+
+  const messages = capturedOptions?.messages as
+    | Array<{ role: string; content: string }>
+    | undefined;
+  const promptText =
+    messages?.map((message) => message.content).join("\n") ?? "";
+
+  expect(promptText).toContain(
+    "When generating reasoning sections (for example Decision Drivers, Rationale, Tradeoffs)",
+  );
+  expect(promptText).toContain("do not fabricate detailed rationale");
+  expect(promptText).toContain("keep inference minimal");
 });
 
 test("parseDigestItemsResponse rejects invalid timeline format", () => {

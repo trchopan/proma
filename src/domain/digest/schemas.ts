@@ -33,7 +33,7 @@ export function buildDigestResponseSchema(allowedSources: readonly string[]) {
             keyPoints: {
               type: "array",
               description:
-                "Key points written in English, even when source notes are not in English.",
+                "Key points written in English, even when source notes are not in English. Preserve explicit ownership/actor identity cues when present (for example author, merged_by, assignee, owner/PIC, @mentions).",
               items: {
                 type: "string",
               },
@@ -41,7 +41,7 @@ export function buildDigestResponseSchema(allowedSources: readonly string[]) {
             timeline: {
               type: "array",
               description:
-                "Timeline entries in English. Each entry must use strict ISO format: YYYY-MM-DD - <context>.",
+                "Timeline entries in English for substantive project/content events (for example decisions, incidents, milestones, findings, or completed actions). Exclude ingestion or tooling metadata (for example import/search/sync/query operations, note creation, or file processing). Each entry must use strict ISO format: YYYY-MM-DD - <context>.",
               items: {
                 type: "string",
               },
@@ -58,6 +58,7 @@ export function buildDigestResponseSchema(allowedSources: readonly string[]) {
                   },
                   link: {
                     type: "string",
+                    minLength: 1,
                   },
                 },
                 required: ["source", "link"],
@@ -127,7 +128,10 @@ export function buildMergeContentResponseSchema(
             type: "string",
             enum: [...allowedSources],
           },
-          link: { type: "string" },
+          link: {
+            type: "string",
+            minLength: 1,
+          },
         },
         required: ["source", "link"],
       },
@@ -138,21 +142,29 @@ export function buildMergeContentResponseSchema(
     },
   } as const;
 
-  if (input.category === "discussion") {
+  if (input.category === "decision") {
     return {
       type: "object",
       additionalProperties: false,
       properties: {
         ...shared,
-        contextBackground: {
+        decision: {
           type: "array",
           items: { type: "string" },
         },
-        resolution: {
+        context: {
           type: "array",
           items: { type: "string" },
         },
-        participants: {
+        optionsConsidered: {
+          type: "array",
+          items: { type: "string" },
+        },
+        rationaleTradeoffs: {
+          type: "array",
+          items: { type: "string" },
+        },
+        stakeholders: {
           type: "array",
           items: { type: "string" },
         },
@@ -160,9 +172,11 @@ export function buildMergeContentResponseSchema(
       required: [
         "category",
         "summary",
-        "contextBackground",
-        "resolution",
-        "participants",
+        "decision",
+        "context",
+        "optionsConsidered",
+        "rationaleTradeoffs",
+        "stakeholders",
         "references",
         "tags",
       ],
@@ -232,6 +246,8 @@ export function buildMergeContentResponseSchema(
       },
       teamsIndividualsInvolved: {
         type: "array",
+        description:
+          "Teams/individuals involved in planning execution. When people are explicitly identified with handles, format as either 'Display Name (platform:identity handle)' or '(platform:identity handle)'. Use source-based platform labels (for example git, slack).",
         items: { type: "string" },
       },
     },

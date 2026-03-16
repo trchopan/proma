@@ -12,10 +12,7 @@ import {
   renderActionList,
   renderImportedMarkdown,
 } from "$/integrations/mcp/transform";
-import {
-  resolveImportOutputPath,
-  writeImportedMarkdown,
-} from "$/storage/import/import-files";
+import { writeImportedMarkdown } from "$/storage/import/import-files";
 
 test("renderActionList renders concise action output", () => {
   const output = renderActionList({
@@ -82,51 +79,18 @@ test("renderImportedMarkdown prefers text content when available", () => {
   expect(markdown).toContain("- item 1");
 });
 
-test("resolveImportOutputPath allocates deterministic default filenames", async () => {
-  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "proma-import-path-"));
-  const projectRoot = path.join(tmpDir, "apollo");
-  await mkdir(path.join(projectRoot, "imports"), { recursive: true });
-
-  const firstPath = await resolveImportOutputPath({
-    projectRoot,
-    server: "slack",
-    tool: "fetch_thread",
-    now: new Date("2026-03-12T10:00:00.000Z"),
-  });
-  expect(firstPath).toBe(
-    path.join(projectRoot, "imports", "2026-03-12_slack_fetch-thread.md"),
-  );
-
-  await Bun.write(firstPath, "existing");
-
-  const secondPath = await resolveImportOutputPath({
-    projectRoot,
-    server: "slack",
-    tool: "fetch_thread",
-    now: new Date("2026-03-12T10:00:00.000Z"),
-  });
-
-  expect(secondPath).toBe(
-    path.join(projectRoot, "imports", "2026-03-12_slack_fetch-thread_2.md"),
-  );
-});
-
 test("writeImportedMarkdown writes to explicit output path", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "proma-import-write-"));
-  const projectRoot = path.join(tmpDir, "apollo");
-  await mkdir(projectRoot, { recursive: true });
+  await mkdir(tmpDir, { recursive: true });
 
-  const output = path.join(projectRoot, "custom", "thread.md");
+  const output = path.join(tmpDir, "custom", "thread.md");
   const written = await writeImportedMarkdown({
-    projectRoot,
-    server: "slack",
-    tool: "fetch_thread",
     output,
     markdown: "# Imported",
   });
 
   expect(written.absolutePath).toBe(output);
-  expect(written.relativePath).toBe(path.join("custom", "thread.md"));
+  expect(written.relativePath).toBe(output);
   expect(await Bun.file(output).text()).toBe("# Imported");
 });
 
@@ -167,7 +131,7 @@ test("callGithubTool validates required args before running gh", async () => {
 
 test("buildGhApiCommandArgs always forces GET and supports host", () => {
   const args = buildGhApiCommandArgs({
-    endpoint: "/repos/LINE-FE/sample-portal-fe/pulls",
+    endpoint: "/repos/acme/project-orion-web/pulls",
     host: "git.example.com",
     query: {
       state: "all",
@@ -178,7 +142,7 @@ test("buildGhApiCommandArgs always forces GET and supports host", () => {
 
   expect(args).toEqual([
     "api",
-    "/repos/LINE-FE/sample-portal-fe/pulls",
+    "/repos/acme/project-orion-web/pulls",
     "--method",
     "GET",
     "--hostname",
@@ -197,8 +161,8 @@ test("callGithubTool validates state enum for list tools", async () => {
     callGithubTool({
       tool: "prs_list",
       args: {
-        owner: "LINE-FE",
-        repo: "sample-portal-fe",
+        owner: "acme",
+        repo: "project-orion-web",
         state: "invalid",
       },
     }),

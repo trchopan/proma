@@ -35,16 +35,18 @@ type WrittenReportFile = {
   relativePath: string;
 };
 
-const REPORT_INPUT_CATEGORIES = ["planning", "research", "discussion"];
+const REPORT_INPUT_CATEGORIES = ["planning", "research", "decision"] as const;
 
-function isReportInputCategory(value: string): boolean {
-  return REPORT_INPUT_CATEGORIES.includes(value);
+type ReportInputCategory = (typeof REPORT_INPUT_CATEGORIES)[number];
+
+function isReportInputCategory(value: string): value is ReportInputCategory {
+  return (REPORT_INPUT_CATEGORIES as readonly string[]).includes(value);
 }
 
 function inferTopicCategoryFromPath(
   projectRoot: string,
   absolutePath: string,
-): string {
+): ReportInputCategory {
   const topicsRoot = path.join(projectRoot, "topics");
   const relativeToTopics = path.relative(topicsRoot, absolutePath);
   if (
@@ -60,7 +62,7 @@ function inferTopicCategoryFromPath(
   const [category] = relativeToTopics.split(path.sep);
   if (!category || !isReportInputCategory(category)) {
     throw new Error(
-      `Invalid --input file category (must be planning|research|discussion): ${absolutePath}`,
+      `Invalid --input file category (must be planning|research|decision): ${absolutePath}`,
     );
   }
 
@@ -185,12 +187,12 @@ async function loadInputContext(
   const categoryHint =
     parsed.metadata.category ??
     inferTopicCategoryFromPath(projectRoot, absolutePath);
-  const typedCategory =
-    categoryHint === "planning" ||
-    categoryHint === "research" ||
-    categoryHint === "discussion"
-      ? categoryHint
-      : "planning";
+  if (!isReportInputCategory(categoryHint)) {
+    throw new Error(
+      `Invalid topic category in front matter (must be planning|research|decision): ${absolutePath}`,
+    );
+  }
+  const typedCategory = categoryHint;
   const topicData = extractTopicDataByCategory(parsed.body, typedCategory);
   const canonical = topicSignalsFromCategoryData(typedCategory, topicData);
   const topicHint =

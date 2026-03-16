@@ -24,8 +24,13 @@ function buildDigestUserText(
     "Return concise and meaningful digest items based on intent.",
     "Prefer fewer, meaningful digest items and avoid over-fragmenting.",
     "Always write summary, keyPoints, and timeline context in English, even if the user content is in another language.",
+    "When source content includes explicit ownership/actor identities (for example author, merged_by, assignee, owner/PIC, or @mentions), preserve those identity cues in keyPoints.",
     "Timeline is optional when date information is unknown.",
+    "Timeline entries must represent substantive events from the underlying project content (for example: decisions, incidents, milestones, findings, or completed actions).",
+    "Do not include ingestion or tooling metadata in timeline (for example: import/search/sync/query operations, note creation, or file processing steps).",
+    "If no substantive dated event is present, return an empty timeline array.",
     "When timeline entries are present, each entry must use this strict format: YYYY-MM-DD - <context>.",
+    "Each reference link must be a non-empty, source-backed URL or locator string. Do not emit blank or placeholder links.",
     `Each item must include a source value from: ${allowedSourcesText}.`,
     "If references are unknown, return an empty array.",
     "User content:",
@@ -42,6 +47,10 @@ function buildMergeCandidateText(context: {
     keyPoints: string[];
     timeline: string[];
     references: Array<{ source: string; link: string }>;
+    digestedCount?: number;
+    updatedAt?: string;
+    timeboxes?: string[];
+    anchors?: string[];
   }>;
 }): string {
   if (context.candidates.length === 0) {
@@ -67,7 +76,20 @@ function buildMergeCandidateText(context: {
               .map((reference) => `${reference.source}: ${reference.link}`)
               .join(" | ")
           : "none";
-      return `- slug: ${candidate.slug}; topic: ${candidate.topic}; tags: ${tagsText}; summary: ${candidate.summary}; keyPoints: ${keyPointsText}; timeline: ${timelineText}; references: ${referencesText}`;
+      const timeboxesText =
+        candidate.timeboxes && candidate.timeboxes.length > 0
+          ? candidate.timeboxes.join(", ")
+          : "none";
+      const digestedCountText = String(candidate.digestedCount ?? 0);
+      const updatedAtText =
+        candidate.updatedAt && candidate.updatedAt.length > 0
+          ? candidate.updatedAt
+          : "unknown";
+      const anchorsText =
+        candidate.anchors && candidate.anchors.length > 0
+          ? candidate.anchors.join(", ")
+          : "none";
+      return `- slug: ${candidate.slug}; topic: ${candidate.topic}; tags: ${tagsText}; summary: ${candidate.summary}; keyPoints: ${keyPointsText}; timeline: ${timelineText}; references: ${referencesText}; timeboxes: ${timeboxesText}; anchors: ${anchorsText}; digestedCount: ${digestedCountText}; updatedAt: ${updatedAtText}`;
     })
     .join("\n");
 }
@@ -137,9 +159,24 @@ export function createBuiltInPromptRegistry(options?: {
         const candidateText = buildMergeCandidateText(context);
         const prompt = [
           "Route this digest item into exactly one primary topic file.",
+          "Before selecting a target, classify artifact_type internally as one of: canonical_topic, routine_change, status_update, operational_event.",
+          "Only create or update a canonical topic when the digest represents durable knowledge likely to matter weeks or months later.",
+          "Durable examples: architecture or operational decisions, investigation findings or incident analysis, execution plans or release coordination, cross-team changes with clear rationale.",
+          "Non-durable examples: small routine pull requests (UI tweaks, version bumps, small refactors), housekeeping updates, status summaries, weekly highlights, and alerts without investigation.",
+          "Only canonical_topic should justify create_new.",
+          "For routine_change/status_update/operational_event, prefer update_existing to a broad durable workstream topic when a candidate reasonably matches.",
+          "If no candidate exists, create_new must still be a broad durable roll-up topic (project/workstream/timebox), not a PR-level, note-level, or task-level topic.",
           "Prefer update_existing when a candidate clearly matches semantic scope.",
+          "Default to workstream-level canonical topics, not note-level or PR-level topic files.",
+          "Across all sources (git/slack/wiki/document), reuse an existing topic when domain + workstream + timebox are aligned.",
+          "Treat product/project identity as a hard split key (for example project-atlas-api vs project-orion-web). Do not merge across distinct identities.",
           "Use create_new only when no candidate is a close match.",
+          "Treat timebox as a hard split key when present (for example release/sprint/quarter). Do not merge across different timeboxes.",
+          "Avoid near-duplicate create_new identities: if topic/slug identity substantially overlaps an existing candidate, choose update_existing.",
+          "When create_new is required due to hard split boundaries, include at least one durable differentiator in shortDescription/topic (for example release marker, project/service anchor, or other stable scope marker).",
           "Avoid cross-topic contamination: do not mix policy decisions with release plan/schedule execution topics unless the digest is genuinely about both.",
+          "If action is update_existing, slug must be a non-empty slug copied from the candidate topic list.",
+          "If no candidate slug is suitable, use create_new instead of update_existing.",
           "Prefer reusing existing tags from candidates when possible; only add new tags when required.",
           "For create_new, provide shortDescription suitable for a kebab-case filename (max 100 characters after normalization).",
           "Return tags as concise lowercase phrases.",
@@ -184,12 +221,14 @@ export function createBuiltInPromptRegistry(options?: {
           allowedSources,
         );
         const sectionGuidance =
-          context.category === "discussion"
+          context.category === "decision"
             ? [
-                "Return sections as: summary, contextBackground, resolution, participants, references, tags.",
-                "Context/Background should capture facts and framing.",
-                "Resolution should capture decisions and agreed outcomes.",
-                "Participants should list teams/individuals involved.",
+                "Return sections as: summary, decision, context, optionsConsidered, rationaleTradeoffs, stakeholders, references, tags.",
+                "Decision should capture the chosen direction and concrete resolution.",
+                "Context should capture relevant facts, constraints, and framing.",
+                "Options Considered should list meaningful alternatives.",
+                "Rationale / Tradeoffs should explain why the decision was chosen.",
+                "Stakeholders should list teams/individuals involved in the decision.",
               ]
             : context.category === "research"
               ? [
@@ -202,6 +241,9 @@ export function createBuiltInPromptRegistry(options?: {
               : [
                   "Return sections as: summary, objectivesSuccessCriteria, scope, deliverables, plan, timeline, teamsIndividualsInvolved, references, tags.",
                   "Timeline entries must stay in strict format: YYYY-MM-DD - <context>.",
+                  "Teams/Individuals Involved must include explicitly named owners/actors from incoming content whenever present.",
+                  "Format people with identity handles as either 'Display Name (platform:identity handle)' or '(platform:identity handle)'.",
+                  "Use source-based platform labels (for example git, slack).",
                   "Objectives / Success Criteria should be concrete and measurable when possible.",
                 ];
         const prompt = [
@@ -209,6 +251,10 @@ export function createBuiltInPromptRegistry(options?: {
           "Keep only content directly relevant to the selected topic scope.",
           "Remove duplicates or near-duplicates from returned arrays.",
           "Do not introduce unrelated schedule/task details.",
+          "When generating reasoning sections (for example Decision Drivers, Rationale, Tradeoffs), prefer information explicitly present in source material.",
+          "If the source does not contain reasoning, do not fabricate detailed rationale.",
+          "When reasoning is unclear, state that explicitly and keep inference minimal.",
+          "Avoid generic unsupported claims such as low-risk or obvious tradeoff language unless supported by references, descriptions, or discussion content.",
           "Reuse tags from the provided tagPool whenever possible; only add new tags if necessary.",
           ...sectionGuidance,
           "Selected topic context:",
