@@ -172,6 +172,8 @@ export function createBuiltInPromptRegistry(options?: {
           "Treat product/project identity as a hard split key (for example project-atlas-api vs project-orion-web). Do not merge across distinct identities.",
           "Use create_new only when no candidate is a close match.",
           "Treat timebox as a hard split key when present (for example release/sprint/quarter). Do not merge across different timeboxes.",
+          "Avoid near-duplicate create_new identities: if topic/slug identity substantially overlaps an existing candidate, choose update_existing.",
+          "When create_new is required due to hard split boundaries, include at least one durable differentiator in shortDescription/topic (for example release marker, project/service anchor, or other stable scope marker).",
           "Avoid cross-topic contamination: do not mix policy decisions with release plan/schedule execution topics unless the digest is genuinely about both.",
           "If action is update_existing, slug must be a non-empty slug copied from the candidate topic list.",
           "If no candidate slug is suitable, use create_new instead of update_existing.",

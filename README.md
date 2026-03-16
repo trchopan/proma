@@ -196,6 +196,8 @@ Topic file behavior:
 - Merge prefers durable workstream-level topics over note/PR-specific topic files across all sources (`git`, `slack`, `wiki`, `document`).
 - Timebox signals (for example `release/x.y.z`, `sprint-<n>`, `Qn-YYYY`) are treated as hard split boundaries when present.
 - Project/product identity signals (for example `project-atlas-api`, `project-orion-web`) are treated as hard split boundaries to avoid cross-project topic contamination.
+- If AI proposes `create_new` with a near-duplicate topic identity (topic/slug overlap) and no hard split conflict, merge auto-consolidates to `update_existing` for the closest candidate.
+- If a hard split boundary requires `create_new` in a near-duplicate scenario, merge enforces differentiated topic identity using durable scope markers (for example release or project/service anchors).
 - Merge pre-ranks candidates deterministically and sends only the top 8 candidates to routing.
 - Merge applies semantic content refinement to reduce unrelated/duplicated key points and timeline entries, with deterministic fallback on failure.
 - Merge uses a decision-promotion threshold for new `git`-sourced decision topics: routine implementation changes without explicit rationale/tradeoffs or significant architecture/infra/policy impact are not promoted into new decision topic files.

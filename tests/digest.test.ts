@@ -528,6 +528,8 @@ test("generateTopicTarget passes candidate slugs and strict schema", async () =>
   expect(promptText).toContain(
     "Treat product/project identity as a hard split key",
   );
+  expect(promptText).toContain("Avoid near-duplicate create_new identities");
+  expect(promptText).toContain("include at least one durable differentiator");
 });
 
 test("parseMergeContentResponse validates canonical merge payload", () => {
