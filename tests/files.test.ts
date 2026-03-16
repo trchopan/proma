@@ -380,6 +380,87 @@ test("chooseConsolidatedTarget keeps create_new when candidate misses required t
   expect(target.action).toBe("create_new");
 });
 
+test("chooseConsolidatedTarget converts near-duplicate create_new to update_existing", () => {
+  const target = chooseConsolidatedTarget({
+    item: {
+      category: "planning",
+      source: "git",
+      summary:
+        "Weekly highlights for XLT beta rollout and sentry migration dependency updates",
+      keyPoints: ["Consolidate release stream notes for engineering updates"],
+      timeline: ["2026-03-15 - Weekly update posted"],
+      references: [],
+    },
+    rankedCandidates: [
+      {
+        slug: "sample-portal-weekly-highlights-xlt-beta-rollout-sentry-migration-and-engineering-updates",
+        topic:
+          "Sample Portal weekly highlights: XLT beta rollout, sentry migration and engineering updates",
+        tags: ["sample-portal", "xlt", "weekly-highlights"],
+        summary: "Consolidated weekly highlights for sample portal",
+        keyPoints: ["Engineering updates and migration status"],
+        timeline: ["2026-03-08 - Prior highlights posted"],
+        references: [],
+        digestedCount: 3,
+        updatedAt: "2026-03-14T00:00:00.000Z",
+        timeboxes: [],
+        anchors: ["sample-portal"],
+      },
+    ],
+    aiTarget: {
+      action: "create_new",
+      shortDescription:
+        "sample-portal-weekly-highlights-xlt-beta-rollout-sentry-migration-dependency-and-engineering-updates",
+      topic:
+        "Sample Portal weekly highlights: XLT beta rollout, sentry migration dependency and engineering updates",
+      tags: ["sample-portal", "weekly-highlights"],
+    },
+  });
+
+  expect(target.action).toBe("update_existing");
+  expect(target.slug).toBe(
+    "sample-portal-weekly-highlights-xlt-beta-rollout-sentry-migration-and-engineering-updates",
+  );
+});
+
+test("chooseConsolidatedTarget keeps create_new but adds durable differentiator under hard split", () => {
+  const target = chooseConsolidatedTarget({
+    item: {
+      category: "planning",
+      source: "git",
+      summary: "Dependency updates for project-orion-web release/1.12.0",
+      keyPoints: ["Release readiness updates for project-orion-web"],
+      timeline: ["2026-03-16 - Updates merged into release/1.12.0"],
+      references: [],
+    },
+    rankedCandidates: [
+      {
+        slug: "xlt-dependency-updates-release-1-13-0",
+        topic: "XLT dependency updates release/1.13.0",
+        tags: ["xlt", "release-1-13-0", "project-orion-web"],
+        summary: "Track XLT dependency updates for release 1.13.0",
+        keyPoints: ["Current release stream"],
+        timeline: ["2026-03-12 - Prior release updates merged"],
+        references: [],
+        digestedCount: 4,
+        updatedAt: "2026-03-15T00:00:00.000Z",
+        timeboxes: ["release-1-13-0"],
+        anchors: ["project-orion-web"],
+      },
+    ],
+    aiTarget: {
+      action: "create_new",
+      shortDescription: "xlt-dependency-updates-release-1-13-0",
+      topic: "XLT dependency updates release/1.13.0",
+      tags: ["xlt"],
+    },
+  });
+
+  expect(target.action).toBe("create_new");
+  expect(target.shortDescription).toContain("release-1-12-0");
+  expect(target.topic).toContain("release-1-12-0");
+});
+
 test("chooseConsolidatedTarget downgrades unsafe update_existing to create_new", () => {
   const target = chooseConsolidatedTarget({
     item: {

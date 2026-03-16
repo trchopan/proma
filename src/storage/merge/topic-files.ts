@@ -97,6 +97,24 @@ function overlapScore(left: string[], right: string[]): number {
   return matches;
 }
 
+function jaccardSimilarity(left: string[], right: string[]): number {
+  if (left.length === 0 || right.length === 0) {
+    return 0;
+  }
+
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  let intersection = 0;
+  for (const token of leftSet) {
+    if (rightSet.has(token)) {
+      intersection += 1;
+    }
+  }
+
+  const union = leftSet.size + rightSet.size - intersection;
+  return union > 0 ? intersection / union : 0;
+}
+
 function uniqueSorted(values: Iterable<string>): string[] {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b));
 }
@@ -153,6 +171,14 @@ type RoutingSignals = {
   anchors: string[];
 };
 
+type IdentitySignals = {
+  slugTokens: string[];
+  topicTokens: string[];
+  identityTokens: string[];
+  timeboxes: string[];
+  anchors: string[];
+};
+
 function normalizeAnchor(value: string): string {
   return value
     .toLowerCase()
@@ -205,7 +231,11 @@ function extractAnchors(values: string[]): string[] {
       }
 
       const parts = anchor.split("-");
-      if (parts.length < 2) {
+      if (parts.length < 2 || parts.length > 5) {
+        continue;
+      }
+
+      if (/^\d{4}(?:-\d{2}){1,2}$/.test(anchor)) {
         continue;
       }
 
@@ -258,6 +288,87 @@ function buildItemSignals(item: DigestItem): RoutingSignals {
   };
 }
 
+function buildTargetIdentitySignals(
+  target: TopicRoutingTarget,
+  itemSignals: RoutingSignals,
+): IdentitySignals {
+  const shortDescription = target.shortDescription?.trim() ?? "";
+  const targetSlug = slugifyTopic(shortDescription || target.topic);
+  const slugTokens = tokenize(targetSlug);
+  const topicTokens = [target.topic, shortDescription]
+    .filter((value) => value.trim().length > 0)
+    .flatMap((value) => tokenize(value));
+  const identityTokens = uniqueSorted([...slugTokens, ...topicTokens]);
+  const values = [target.topic, shortDescription, ...target.tags];
+
+  return {
+    slugTokens,
+    topicTokens,
+    identityTokens,
+    timeboxes: uniqueSorted([
+      ...itemSignals.timeboxes,
+      ...extractTimeboxes(values),
+      ...extractTimeboxes([targetSlug]),
+    ]),
+    anchors: uniqueSorted([
+      ...itemSignals.anchors,
+      ...extractAnchors(values),
+      ...extractAnchors([targetSlug]),
+    ]),
+  };
+}
+
+function buildCandidateIdentitySignals(
+  candidate: TopicCandidate,
+): IdentitySignals {
+  const slugTokens = tokenize(candidate.slug);
+  const topicTokens = tokenize(candidate.topic);
+  return {
+    slugTokens,
+    topicTokens,
+    identityTokens: uniqueSorted([...slugTokens, ...topicTokens]),
+    timeboxes: candidate.timeboxes,
+    anchors: candidate.anchors,
+  };
+}
+
+function isNearDuplicateIdentity(
+  targetIdentity: IdentitySignals,
+  candidateIdentity: IdentitySignals,
+): boolean {
+  const identitySimilarity = jaccardSimilarity(
+    targetIdentity.identityTokens,
+    candidateIdentity.identityTokens,
+  );
+  const slugSimilarity = jaccardSimilarity(
+    targetIdentity.slugTokens,
+    candidateIdentity.slugTokens,
+  );
+  const topicSimilarity = jaccardSimilarity(
+    targetIdentity.topicTokens,
+    candidateIdentity.topicTokens,
+  );
+  const sharedIdentityTokens = overlapScore(
+    targetIdentity.identityTokens,
+    candidateIdentity.identityTokens,
+  );
+  const minIdentitySize = Math.min(
+    targetIdentity.identityTokens.length,
+    candidateIdentity.identityTokens.length,
+  );
+
+  const almostSameIdentity =
+    minIdentitySize >= 5 &&
+    sharedIdentityTokens >= minIdentitySize - 1 &&
+    (slugSimilarity >= 0.6 || topicSimilarity >= 0.6);
+
+  return (
+    almostSameIdentity ||
+    (identitySimilarity >= 0.65 &&
+      (slugSimilarity >= 0.5 || topicSimilarity >= 0.5))
+  );
+}
+
 function buildCandidateSignals(candidate: TopicCandidate): RoutingSignals {
   const values = [
     candidate.topic,
@@ -277,6 +388,118 @@ function buildCandidateSignals(candidate: TopicCandidate): RoutingSignals {
     scopeTokens: buildScopeTokens(tokens, timeboxes),
     timeboxes,
     anchors: candidate.anchors,
+  };
+}
+
+function hasHardSplitConflict(scored: CandidateScore): boolean {
+  const hasHardTimeboxConflict =
+    scored.itemTimeboxes > 0 &&
+    (scored.candidateTimeboxes === 0 || scored.sharedTimeboxes === 0);
+  const hasHardAnchorConflict =
+    scored.itemAnchors > 0 &&
+    (scored.candidateAnchors === 0 ||
+      scored.sharedAnchors === 0 ||
+      scored.sharedAnchors < scored.candidateAnchors);
+
+  return hasHardTimeboxConflict || hasHardAnchorConflict;
+}
+
+function isHardSplitAnchor(anchor: string): boolean {
+  return (
+    anchor.startsWith("project-") ||
+    /-(api|web|service|backend|frontend|portal|mobile|app)$/.test(anchor)
+  );
+}
+
+function hasNearDuplicateHardSplitConflict(options: {
+  scored: CandidateScore;
+  targetIdentity: IdentitySignals;
+  candidateIdentity: IdentitySignals;
+}): boolean {
+  const hasHardTimeboxConflict =
+    options.scored.itemTimeboxes > 0 &&
+    (options.scored.candidateTimeboxes === 0 ||
+      options.scored.sharedTimeboxes === 0);
+  const targetHardAnchors =
+    options.targetIdentity.anchors.filter(isHardSplitAnchor);
+  const candidateHardAnchors =
+    options.candidateIdentity.anchors.filter(isHardSplitAnchor);
+  const targetHardAnchorSet = new Set(targetHardAnchors);
+  const sharedAnchors = candidateHardAnchors.filter((anchor) =>
+    targetHardAnchorSet.has(anchor),
+  ).length;
+  const hasHardAnchorConflict =
+    targetHardAnchors.length > 0 &&
+    candidateHardAnchors.length > 0 &&
+    sharedAnchors === 0;
+
+  return hasHardTimeboxConflict || hasHardAnchorConflict;
+}
+
+function pickDifferentiator(options: {
+  itemSignals: RoutingSignals;
+  targetIdentity: IdentitySignals;
+  candidateIdentity: IdentitySignals;
+}): string | null {
+  const itemOnlyTimeboxes = options.itemSignals.timeboxes.filter(
+    (timebox) => !options.candidateIdentity.timeboxes.includes(timebox),
+  );
+  if (itemOnlyTimeboxes[0]) {
+    return itemOnlyTimeboxes[0];
+  }
+
+  const itemOnlyAnchors = options.itemSignals.anchors.filter(
+    (anchor) => !options.candidateIdentity.anchors.includes(anchor),
+  );
+  if (itemOnlyAnchors[0]) {
+    return itemOnlyAnchors[0];
+  }
+
+  if (options.targetIdentity.timeboxes[0]) {
+    return options.targetIdentity.timeboxes[0];
+  }
+
+  if (options.targetIdentity.anchors[0]) {
+    return options.targetIdentity.anchors[0];
+  }
+
+  return null;
+}
+
+function withDifferentiatedCreateNewIdentity(options: {
+  target: TopicRoutingTarget;
+  marker: string | null;
+}): TopicRoutingTarget {
+  if (options.target.action !== "create_new") {
+    return options.target;
+  }
+
+  if (!options.marker) {
+    return options.target;
+  }
+
+  const markerSlug = slugifyTopic(options.marker);
+  if (!markerSlug) {
+    return options.target;
+  }
+
+  const baseShort =
+    options.target.shortDescription?.trim() || options.target.topic;
+  const baseShortSlug = slugifyTopic(baseShort);
+  const nextShort = baseShortSlug.includes(markerSlug)
+    ? baseShort
+    : `${baseShort} ${options.marker}`;
+
+  const topicSlug = slugifyTopic(options.target.topic);
+  const hasTopicMarker = topicSlug.includes(markerSlug);
+  const nextTopic = hasTopicMarker
+    ? options.target.topic
+    : `${options.target.topic} (${options.marker})`;
+
+  return {
+    ...options.target,
+    shortDescription: nextShort,
+    topic: nextTopic,
   };
 }
 
@@ -421,16 +644,7 @@ export function chooseConsolidatedTarget(options: {
     }
 
     const scored = scoreCandidate(options.item, selected, itemSignals);
-    const hasHardTimeboxConflict =
-      scored.itemTimeboxes > 0 &&
-      (scored.candidateTimeboxes === 0 || scored.sharedTimeboxes === 0);
-    const hasHardAnchorConflict =
-      scored.itemAnchors > 0 &&
-      (scored.candidateAnchors === 0 ||
-        scored.sharedAnchors === 0 ||
-        scored.sharedAnchors < scored.candidateAnchors);
-
-    if (hasHardTimeboxConflict || hasHardAnchorConflict) {
+    if (hasHardSplitConflict(scored)) {
       return {
         action: "create_new",
         shortDescription: options.aiTarget.topic,
@@ -447,17 +661,56 @@ export function chooseConsolidatedTarget(options: {
     return options.aiTarget;
   }
 
-  const scored = scoreCandidate(options.item, topCandidate, itemSignals);
-  const hasHardTimeboxConflict =
-    scored.itemTimeboxes > 0 &&
-    (scored.candidateTimeboxes === 0 || scored.sharedTimeboxes === 0);
-  const hasHardAnchorConflict =
-    scored.itemAnchors > 0 &&
-    (scored.candidateAnchors === 0 ||
-      scored.sharedAnchors === 0 ||
-      scored.sharedAnchors < scored.candidateAnchors);
+  const targetIdentity = buildTargetIdentitySignals(
+    options.aiTarget,
+    itemSignals,
+  );
+  const nearDuplicate = options.rankedCandidates
+    .map((candidate) => {
+      const identity = buildCandidateIdentitySignals(candidate);
+      const isNearDuplicate = isNearDuplicateIdentity(targetIdentity, identity);
+      if (!isNearDuplicate) {
+        return null;
+      }
 
-  if (hasHardTimeboxConflict || hasHardAnchorConflict) {
+      return {
+        candidate,
+        identity,
+        scored: scoreCandidate(options.item, candidate, itemSignals),
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+    .sort((left, right) => sortScores(left.scored, right.scored))[0];
+
+  if (nearDuplicate) {
+    const hasHardConflict = hasNearDuplicateHardSplitConflict({
+      scored: nearDuplicate.scored,
+      targetIdentity,
+      candidateIdentity: nearDuplicate.identity,
+    });
+
+    if (!hasHardConflict) {
+      return {
+        action: "update_existing",
+        slug: nearDuplicate.candidate.slug,
+        topic: nearDuplicate.candidate.topic,
+        tags: options.aiTarget.tags,
+      };
+    }
+
+    const differentiator = pickDifferentiator({
+      itemSignals,
+      targetIdentity,
+      candidateIdentity: nearDuplicate.identity,
+    });
+    return withDifferentiatedCreateNewIdentity({
+      target: options.aiTarget,
+      marker: differentiator,
+    });
+  }
+
+  const scored = scoreCandidate(options.item, topCandidate, itemSignals);
+  if (hasHardSplitConflict(scored)) {
     return options.aiTarget;
   }
 

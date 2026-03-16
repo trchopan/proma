@@ -834,6 +834,73 @@ test("runCli merge promotes create_new to update_existing for strong same-timebo
   expect(output).toContain("Found 1 pending digest file(s).");
 });
 
+test("runCli merge keeps create_new with differentiated identity for hard-split near-duplicate", async () => {
+  let capturedAction = "";
+  let capturedShortDescription = "";
+  let capturedTopic = "";
+
+  const exitCode = await runCli(["merge", "--project", "apollo", "--dry-run"], {
+    listPendingDigestItems: async () => [
+      {
+        item: {
+          category: "planning",
+          source: "git",
+          summary: "Dependency updates for project-orion-web release/1.12.0",
+          keyPoints: ["Keep release stream updates in one topic"],
+          timeline: ["2026-03-16 - Updates merged"],
+          references: [],
+        },
+        absolutePath: "/tmp/apollo/notes/planning_2026-03-16_1.md",
+        relativePath: "notes/planning_2026-03-16_1.md",
+      },
+    ],
+    listTopicCandidates: async () => [
+      {
+        slug: "xlt-dependency-updates-release-1-13-0",
+        topic: "XLT dependency updates release/1.13.0",
+        tags: ["xlt", "release-1-13-0", "project-orion-web"],
+        summary: "Existing release stream topic",
+        keyPoints: ["Existing release scope"],
+        timeline: ["2026-03-14 - Prior updates"],
+        references: [],
+        digestedCount: 4,
+        updatedAt: "2026-03-14T00:00:00.000Z",
+        timeboxes: ["release-1-13-0"],
+        anchors: ["project-orion-web"],
+      },
+    ],
+    rankTopicCandidates: (_item, candidates) => candidates,
+    collectCategoryTagPool: () => ["xlt", "project-orion-web"],
+    generateTopicTarget: async () => ({
+      action: "create_new",
+      shortDescription: "xlt-dependency-updates-release-1-13-0",
+      topic: "XLT dependency updates release/1.13.0",
+      tags: ["xlt"],
+    }),
+    prepareTopicMerge: async (options) => {
+      capturedAction = options.target.action;
+      capturedShortDescription = options.target.shortDescription ?? "";
+      capturedTopic = options.target.topic;
+      return {
+        targetPath:
+          "/tmp/apollo/topics/planning/xlt-dependency-updates-release-1-12-0.md",
+        relativeTargetPath:
+          "topics/planning/xlt-dependency-updates-release-1-12-0.md",
+        currentContent: "",
+        proposedContent: "after",
+        isNew: true,
+        hasChanges: true,
+      };
+    },
+    confirmMerge: async () => true,
+  });
+
+  expect(exitCode).toBe(0);
+  expect(capturedAction).toBe("create_new");
+  expect(capturedShortDescription).toContain("release-1-12-0");
+  expect(capturedTopic).toContain("release-1-12-0");
+});
+
 test("runCli merge with --auto-merge prints diff and skips confirmation", async () => {
   const output: string[] = [];
   const mockItem: DigestItem = {
