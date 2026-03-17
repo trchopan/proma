@@ -45,6 +45,15 @@ function extractTextContent(result: unknown): string | null {
   return parts.join("\n\n");
 }
 
+function isTextJson(text: string): boolean {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function renderActionList(options: {
   tools: McpTool[];
   server: string;
@@ -100,7 +109,7 @@ export function renderImportedMarkdown(options: {
     "## Result",
   ];
 
-  if (textContent) {
+  if (textContent && !isTextJson(textContent)) {
     body.push(textContent);
   } else {
     body.push("```json");
