@@ -99,13 +99,9 @@ Examples:
 ```bash
 # digest
 proma digest --input ./raw.md --project ./acme
-proma digest --input ./raw.md --project ./acme --verbose
-proma digest --input ./raw.md --project ./acme --dry-run
 
 # merge
 proma merge --project ./acme
-proma merge --project ./acme --verbose
-proma merge --project ./acme --dry-run
 proma merge --project ./acme --auto-merge
 
 # report
@@ -114,7 +110,6 @@ proma report --project ./acme --period weekly --dry-run
 
 # import action discovery
 proma import --server mcp.slack --list-actions
-proma import --server mcp.slack --list-actions --verbose
 
 # import GitHub actions (uses local gh auth)
 proma import --server github --list-actions
